@@ -6,6 +6,8 @@ import os
 from twilio.rest import Client
 from dotenv import load_dotenv
 
+from prompts import SYSTEM_PROMPT
+
 # Load environment variables
 load_dotenv()
 

@@ -1,7 +1,7 @@
-fastapi
+fastapi~=0.115.8
 uvicorn
 deepgram-sdk
-openai
-python-dotenv
-twilio
+openai~=1.63.2
+python-dotenv~=1.0.1
+twilio~=9.4.5
 websockets 
