@@ -98,10 +98,10 @@ async def call_center_bot(websocket: WebSocket):
 async def start_call():
     twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-    <Start>
+    <Say>Thank you for calling the Kayako Help Center today. How may I assist you?</Say>
+    <Connect>
         <Stream url="wss://kayakohelpbotserver.fly.dev/stream" />
-    </Start>
-    <Say>Starting the conversation...</Say>
+    </Connect>
 </Response>"""
     return Response(content=twiml, media_type="application/xml")
 
