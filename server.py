@@ -59,74 +59,64 @@ async def call_center_bot(websocket: WebSocket):
                 logger.info("Received disconnect message")
                 break
                 
-            if message["type"] == "websocket.receive":
-                if "text" in message:
-                    # Handle JSON messages (start/stop events)
-                    data = json.loads(message["text"])
-                    logger.debug(f"Received text message: {data['event']}")
-                    if data["event"] == "start":
-                        call_sid = data["start"]["callSid"]
-                        logger.info(f"Started streaming call {call_sid}")
-                    elif data["event"] == "stop":
-                        logger.info("Received stop event")
-                        # Process any remaining text before ending
-                        if text_buffer:
-                            complete_utterance = " ".join(text_buffer)
-                            logger.info(f"Processing final utterance: {complete_utterance}")
-                            knowledge = retrieve_data(complete_utterance)
-                            llm_response = format_response(knowledge)
-                            logger.info(f"Final AI Response: {llm_response}")
-                            send_twilio_tts(llm_response, call_sid)
-                        logger.info(f"Call ended after processing {message_count} messages")
-                        break
+            if message["type"] == "websocket.receive" and "text" in message:
+                # Handle JSON messages (start/stop/media events)
+                data = json.loads(message["text"])
+                logger.debug(f"Received message event: {data['event']}")
                 
-                elif "bytes" in message:
-                    # Log raw message for debugging
-                    logger.debug(f"Raw bytes message: {message}")
-                    logger.debug(f"Message keys: {message.keys()}")
-                    # Handle binary messages (audio data)
-                    try:
-                        raw_data = message["bytes"].decode('utf-8')
-                        data = json.loads(raw_data)
-                        logger.debug("Successfully decoded binary message")
+                if data["event"] == "start":
+                    call_sid = data["start"]["callSid"]
+                    logger.info(f"Started streaming call {call_sid}")
+                
+                elif data["event"] == "media":
+                    logger.debug("Processing media chunk")
+                    # Decode base64 audio data
+                    chunk = base64.b64decode(data["media"]["payload"])
+                    # Convert from mulaw to PCM
+                    chunk = audioop.ulaw2lin(chunk, 2)
+                    # Add to buffer
+                    audio_buffer.extend(chunk)
+                    logger.debug(f"Current audio buffer size: {len(audio_buffer)}")
+                    
+                    # Process audio in chunks (every ~2 seconds)
+                    if len(audio_buffer) >= 32000:  # 16000 samples/sec * 2 seconds * 2 bytes/sample
+                        logger.info("Processing audio chunk of sufficient size")
+                        # Convert audio to text
+                        user_text = await transcribe_audio(bytes(audio_buffer))
+                        logger.debug(f"Transcription result: '{user_text}'")
                         
-                        if data["event"] == "media":
-                            logger.debug("Processing media chunk")
-                            # Decode base64 audio data
-                            chunk = base64.b64decode(data["media"]["payload"])
-                            # Convert from mulaw to PCM
-                            chunk = audioop.ulaw2lin(chunk, 2)
-                            # Add to buffer
-                            audio_buffer.extend(chunk)
-                            logger.debug(f"Current audio buffer size: {len(audio_buffer)}")
-                            
-                            # Process audio in chunks (every ~2 seconds)
-                            if len(audio_buffer) >= 32000:
-                                logger.info("Processing audio chunk of sufficient size")
-                                # Convert audio to text
-                                user_text = await transcribe_audio(bytes(audio_buffer))
-                                logger.debug(f"Transcription result: '{user_text}'")
+                        if user_text.strip():
+                            logger.info(f"Transcribed chunk: {user_text}")
+                            text_buffer.append(user_text)
+                            last_speech_time = time.time()
+                        elif last_speech_time and time.time() - last_speech_time > 2.0:
+                            if text_buffer:
+                                complete_utterance = " ".join(text_buffer)
+                                logger.info(f"Processing complete utterance: {complete_utterance}")
                                 
-                                if user_text.strip():
-                                    logger.info(f"Transcribed chunk: {user_text}")
-                                    text_buffer.append(user_text)
-                                    last_speech_time = time.time()
-                                elif last_speech_time and time.time() - last_speech_time > 2.0:
-                                    if text_buffer:
-                                        complete_utterance = " ".join(text_buffer)
-                                        logger.info(f"Processing complete utterance: {complete_utterance}")
-                                        
-                                        knowledge = retrieve_data(complete_utterance)
-                                        llm_response = format_response(knowledge)
-                                        logger.info(f"AI Response: {llm_response}")
-                                        send_twilio_tts(llm_response, call_sid)
-                                        
-                                        text_buffer = []
-                                        last_speech_time = None
+                                knowledge = retrieve_data(complete_utterance)
+                                llm_response = format_response(knowledge)
+                                logger.info(f"AI Response: {llm_response}")
+                                send_twilio_tts(llm_response, call_sid)
                                 
-                                audio_buffer = bytearray()
-                    except Exception as e:
-                        logger.error(f"Error processing binary message: {e}")
+                                text_buffer = []
+                                last_speech_time = None
+                        
+                        # Clear audio buffer for next chunk
+                        audio_buffer = bytearray()
+                
+                elif data["event"] == "stop":
+                    logger.info("Received stop event")
+                    # Process any remaining text before ending
+                    if text_buffer:
+                        complete_utterance = " ".join(text_buffer)
+                        logger.info(f"Processing final utterance: {complete_utterance}")
+                        knowledge = retrieve_data(complete_utterance)
+                        llm_response = format_response(knowledge)
+                        logger.info(f"Final AI Response: {llm_response}")
+                        send_twilio_tts(llm_response, call_sid)
+                    logger.info(f"Call ended after processing {message_count} messages")
+                    break
     
     except Exception as e:
         logger.error(f"Error in WebSocket handler: {e}", exc_info=True)
