@@ -7,8 +7,10 @@ from dotenv import load_dotenv
 import json
 import os
 import logging
+import time
 
 from prompts import SYSTEM_PROMPT
+from rag import RAGRetriever
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -29,14 +31,17 @@ TWILIO_NUMBER = os.getenv("TWILIO_NUMBER")
 twilio_client = Client(TWILIO_SID, TWILIO_AUTH_TOKEN)
 openai_client = OpenAI(api_key=OPENAI_API_KEY)
 
+# Initialize RAG
+rag = RAGRetriever(openai_client)
+rag.load_articles(['sample-help.json', 'sample-help-2.json'])
+rag.process_articles()
+
 @app.post("/voice")
 async def handle_call():
     twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     <Say>Thank you for calling the Kayako Help Center today. How may I assist you?</Say>
-    <Gather input="speech" action="/handle-input" method="POST" speechTimeout="2" language="en-US">
-        <Say>Please speak your question now.</Say>
-    </Gather>
+    <Gather input="speech" action="/handle-input" method="POST" speechTimeout="1" language="en-US"/>
 </Response>"""
     return Response(content=twiml, media_type="application/xml")
 
@@ -57,7 +62,7 @@ async def handle_input(request: Request):
         twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     <Say>{llm_response}</Say>
-    <Gather input="speech" action="/handle-input" method="POST" speechTimeout="2" language="en-US">
+    <Gather input="speech" action="/handle-input" method="POST" speechTimeout="1" language="en-US">
         <Say>Is there anything else I can help you with?</Say>
     </Gather>
 </Response>"""
@@ -65,15 +70,22 @@ async def handle_input(request: Request):
         twiml = """<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     <Say>I didn't catch that. Could you please repeat your question?</Say>
-    <Gather input="speech" action="/handle-input" method="POST" speechTimeout="2" language="en-US"/>
+    <Gather input="speech" action="/handle-input" method="POST" speechTimeout="1" language="en-US"/>
 </Response>"""
 
     return Response(content=twiml, media_type="application/xml")
 
 # RAG Knowledge Retrieval
 def retrieve_data(query):
-    # Placeholder: Replace with real RAG retrieval
-    return f"Relevant info for: {query}"
+    # Get relevant articles
+    results = rag.retrieve(query, top_k=2)
+    
+    # Format the context
+    context = []
+    for result in results:
+        context.append(f"Article: {result['title']}\n{result['text'][:500]}...")
+        
+    return "\n\n".join(context)
 
 # OpenAI LLM Response Formatting
 def format_response(knowledge):
