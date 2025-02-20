@@ -1,7 +1,7 @@
 fastapi
+uvicorn
 deepgram-sdk
 openai
-twilio
 python-dotenv
-websockets
-uvicorn 
+twilio
+websockets 
