@@ -4,7 +4,7 @@ from deepgram import (
     DeepgramClient,
     PrerecordedOptions,
 )
-import openai
+from openai import OpenAI
 import json
 import os
 from twilio.rest import Client
@@ -37,6 +37,9 @@ twilio_client = Client(TWILIO_SID, TWILIO_AUTH_TOKEN)
 
 # Initialize Deepgram Client
 deepgram = DeepgramClient(DEEPGRAM_API_KEY)
+
+# Initialize OpenAI Client
+openai_client = OpenAI(api_key=OPENAI_API_KEY)
 
 @app.websocket("/stream")
 async def call_center_bot(websocket: WebSocket):
@@ -79,7 +82,7 @@ async def call_center_bot(websocket: WebSocket):
                     logger.debug(f"Current audio buffer size: {len(audio_buffer)}")
                     
                     # Process audio in chunks (every ~2 seconds)
-                    if len(audio_buffer) >= 32000:  # 16000 samples/sec * 2 seconds * 2 bytes/sample
+                    if len(audio_buffer) >= 32000:  # 8000 samples/sec * 2 seconds * 2 bytes/sample for PCM
                         logger.info("Processing audio chunk of sufficient size")
                         # Convert audio to text
                         user_text = await transcribe_audio(bytes(audio_buffer))
@@ -147,11 +150,13 @@ async def transcribe_audio(audio_chunk):
             encoding="linear16",
             sample_rate=8000
         )
-        payload = {
-            "buffer": audio_chunk,
-        }
+        
         logger.debug("Sending request to Deepgram")
-        response = await deepgram.transcription.prerecorded(payload, options)
+        response = await deepgram.transcribe(
+            {"buffer": audio_chunk},
+            options
+        )
+        
         if response and response.results and response.results.channels:
             transcript = response.results.channels[0].alternatives[0].transcript
             logger.debug(f"Transcription successful: {transcript}")
@@ -169,15 +174,14 @@ def retrieve_data(query):
 
 # OpenAI LLM Response Formatting
 def format_response(knowledge):
-    openai.api_key = OPENAI_API_KEY
-    response = openai.ChatCompletion.create(
+    response = openai_client.chat.completions.create(
         model="gpt-3.5-turbo",
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT.format(context=knowledge, query="")},
             {"role": "user", "content": knowledge}
         ]
     )
-    return response['choices'][0]['message']['content']
+    return response.choices[0].message.content
 
 # Twilio Say API (TTS)
 def send_twilio_tts(response_text, call_sid):
