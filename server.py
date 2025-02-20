@@ -1,10 +1,14 @@
 from fastapi import FastAPI, WebSocket
+from fastapi.responses import Response
 from deepgram import Deepgram
 import openai
 import json
 import os
 from twilio.rest import Client
 from dotenv import load_dotenv
+import base64
+import audioop
+import time
 
 from prompts import SYSTEM_PROMPT
 
@@ -27,35 +31,96 @@ twilio_client = Client(TWILIO_SID, TWILIO_AUTH_TOKEN)
 async def call_center_bot(websocket: WebSocket):
     await websocket.accept()
     print("Call started")
+    
+    call_sid = None
+    audio_buffer = bytearray()
+    text_buffer = []
+    last_speech_time = None
 
-    async for message in websocket.iter_text():
-        data = json.loads(message)
+    async for message in websocket.iter_json():
+        if message["event"] == "start":
+            call_sid = message["start"]["callSid"]
+            print(f"Started streaming call {call_sid}")
+            continue
+            
+        if message["event"] == "media":
+            # Decode base64 audio data
+            chunk = base64.b64decode(message["media"]["payload"])
+            # Convert from mulaw to PCM
+            chunk = audioop.ulaw2lin(chunk, 2)
+            # Add to buffer
+            audio_buffer.extend(chunk)
+            
+            # Process audio in chunks (every ~2 seconds)
+            if len(audio_buffer) >= 32000:  # 16000 samples/sec * 2 seconds * 2 bytes/sample
+                # Convert audio to text
+                user_text = transcribe_audio(bytes(audio_buffer))
+                
+                if user_text.strip():  # Only process if we got some text
+                    print(f"Transcribed chunk: {user_text}")
+                    text_buffer.append(user_text)
+                    last_speech_time = time.time()
+                elif last_speech_time and time.time() - last_speech_time > 2.0:  # 2 second silence
+                    # Process complete utterance
+                    if text_buffer:
+                        complete_utterance = " ".join(text_buffer)
+                        print(f"Complete utterance: {complete_utterance}")
+                        
+                        # Now process the complete utterance
+                        knowledge = retrieve_data(complete_utterance)
+                        llm_response = format_response(knowledge)
+                        print(f"AI Response: {llm_response}")
+                        send_twilio_tts(llm_response, call_sid)
+                        
+                        # Clear the text buffer for next utterance
+                        text_buffer = []
+                        last_speech_time = None
+                
+                # Clear audio buffer for next chunk
+                audio_buffer = bytearray()
+            
+        if message["event"] == "stop":
+            # Process any remaining text before ending
+            if text_buffer:
+                complete_utterance = " ".join(text_buffer)
+                print(f"Final utterance: {complete_utterance}")
+                knowledge = retrieve_data(complete_utterance)
+                llm_response = format_response(knowledge)
+                print(f"Final AI Response: {llm_response}")
+                send_twilio_tts(llm_response, call_sid)
+            
+            print("Call ended")
+            break
 
-        # Convert audio to text (Deepgram STT)
-        user_text = transcribe_audio(data["audio"])
-        print(f"User said: {user_text}")
-
-        # Retrieve knowledge (RAG System)
-        knowledge = retrieve_data(user_text)
-
-        # Use OpenAI to format response
-        llm_response = format_response(knowledge)
-        print(f"AI Response: {llm_response}")
-
-        # Send response to Twilio TTS (Say API)
-        send_twilio_tts(llm_response, data["call_sid"])
-
-    print("Call ended")
     await websocket.close()
+
+@app.post("/start-call")
+async def start_call():
+    twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Start>
+        <Stream url="wss://kayakohelpbotserver.fly.dev/stream" />
+    </Start>
+    <Say>Starting the conversation...</Say>
+</Response>"""
+    return Response(content=twiml, media_type="application/xml")
 
 # Deepgram STT Function
 def transcribe_audio(audio_chunk):
     deepgram = Deepgram(DEEPGRAM_API_KEY)
     response = deepgram.transcription.prerecorded({
         "buffer": audio_chunk,
-        "mimetype": "audio/wav"
+        "mimetype": "audio/l16",  # PCM 16-bit linear audio
+        "encoding": "linear16",
+        "sample_rate": 8000
+    }, {
+        "smart_format": True,
+        "model": "nova-2",
     })
-    return response['results']['channels'][0]['alternatives'][0]['transcript']
+    
+    if response and 'results' in response and response['results'].get('channels', []):
+        return response['results']['channels'][0]['alternatives'][0]['transcript']
+    return ""
 
 # RAG Knowledge Retrieval
 def retrieve_data(query):
