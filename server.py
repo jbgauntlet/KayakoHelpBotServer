@@ -3,7 +3,7 @@ from fastapi.responses import Response
 from deepgram import (
     DeepgramClient,
     PrerecordedOptions,
-    FileSource
+    AudioSource
 )
 from openai import OpenAI
 import json
@@ -145,7 +145,10 @@ async def start_call():
 async def transcribe_audio(audio_chunk):
     try:
         logger.debug(f"Attempting to transcribe audio chunk of size {len(audio_chunk)}")
-        source = FileSource(buffer=audio_chunk, mimetype="audio/l16")
+        source = {
+            "buffer": audio_chunk,
+            "mimetype": "audio/l16"
+        }
         options = PrerecordedOptions(
             smart_format=True,
             model="nova-2",
