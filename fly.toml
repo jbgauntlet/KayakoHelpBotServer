@@ -1,4 +1,4 @@
-app = "your-app-name"  # replace with your desired app name
+app = "kayako-help-bot"  # Updated app name
 
 [build]
   dockerfile = "Dockerfile"
@@ -9,6 +9,10 @@ app = "your-app-name"  # replace with your desired app name
 [[services]]
   internal_port = 8080
   protocol = "tcp"
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 0
 
   [[services.ports]]
     handlers = ["http"]
@@ -21,4 +25,8 @@ app = "your-app-name"  # replace with your desired app name
 [services.concurrency]
   type = "connections"
   hard_limit = 25
-  soft_limit = 20 
+  soft_limit = 20
+
+[experimental]
+  allowed_public_ports = []
+  auto_rollback = true 
