@@ -182,13 +182,13 @@ async def handle_input(request: Request):
         if intent == "OFF_TOPIC":
             twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-    <Say>I can only assist with questions related to Kayako and its services. This is attempt {context["invalid_attempts"]} of {MAX_INVALID_ATTEMPTS}. Please ask a Kayako-related question.</Say>
+    <Say>I can only assist with questions related to Kayako and its services. Please ask a Kayako-related question.</Say>
     <Gather input="speech" action="/handle-input" method="POST" speechTimeout="1" language="en-US"/>
 </Response>"""
         else:  # UNCLEAR
             twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-    <Say>I'm not sure I understood. This is attempt {context["invalid_attempts"]} of {MAX_INVALID_ATTEMPTS}. Could you please rephrase your question about Kayako?</Say>
+    <Say>I'm not sure I understood. Could you please rephrase your question about Kayako?</Say>
     <Gather input="speech" action="/handle-input" method="POST" speechTimeout="1" language="en-US"/>
 </Response>"""
         
