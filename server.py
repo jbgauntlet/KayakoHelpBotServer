@@ -205,7 +205,7 @@ async def handle_input(request: Request):
     # Get relevant knowledge
     knowledge = retrieve_data(speech_result)
     # Generate response
-    llm_response = format_response(knowledge)
+    llm_response = format_response(knowledge, speech_result)
     logger.info(f"AI Response: {llm_response}")
 
     # Set the current question for context in next interaction
@@ -240,7 +240,7 @@ def retrieve_data(query):
     return "\n\n".join(context) if context else "NO_ARTICLES_FOUND"
 
 # OpenAI LLM Response Formatting
-def format_response(knowledge):
+def format_response(knowledge: str, query: str):
     max_retries = 3
     base_delay = 1  # seconds
     
@@ -254,7 +254,7 @@ def format_response(knowledge):
                 model="gpt-3.5-turbo",
                 messages=[
                     {"role": "system", "content": SYSTEM_PROMPT.format(context=knowledge)},
-                    {"role": "user", "content": f"Question: {context.get('last_query')}\n\nAvailable documentation:\n{knowledge}"}
+                    {"role": "user", "content": f"Question: {query}\n\nAvailable documentation:\n{knowledge}"}
                 ]
             )
             return response.choices[0].message.content
