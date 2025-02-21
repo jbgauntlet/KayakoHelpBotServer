@@ -242,16 +242,12 @@ def retrieve_data(query):
         context.append(f"Title: {result['title']}\n\n{content}")
         logger.debug(f"Retrieved article: {result['title']}\nContent preview: {content[:200]}...")
         
-    return "\n\n---\n\n".join(context) if context else "NO_ARTICLES_FOUND"
+    return "\n\n---\n\n".join(context)
 
 # OpenAI LLM Response Formatting
 def format_response(knowledge: str, query: str):
     max_retries = 3
     base_delay = 1  # seconds
-    
-    # If no articles found
-    if knowledge == "NO_ARTICLES_FOUND":
-        return "I apologize, but I don't have any information about that in my knowledge base. Would you like me to connect you with a human support agent?"
     
     for attempt in range(max_retries):
         try:
