@@ -99,7 +99,7 @@ async def handle_input(request: Request):
         if context["silence_attempts"] >= MAX_SILENCE_ATTEMPTS:
             twiml = """<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-    <Say>I haven't been able to hear you clearly. Please call back when you're ready to discuss your Kayako-related questions. Have a great day!</Say>
+    <Say>I'm having trouble with processing your response. Please try calling back, and we'll be happy to help you with your Kayako questions. Have a great day!</Say>
     <Hangup/>
 </Response>"""
             conversation_context.pop(call_sid, None)
@@ -107,7 +107,7 @@ async def handle_input(request: Request):
             
         twiml = """<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-    <Say>I'm having trouble hearing you. Could you please speak your question clearly?</Say>
+    <Say>I didn't catch that. Could you please try your question again?</Say>
     <Gather input="speech" action="/handle-input" method="POST" speechTimeout="1" language="en-US"/>
 </Response>"""
         conversation_context[call_sid] = context
@@ -264,7 +264,7 @@ def format_response(knowledge: str, query: str):
             logger.debug(f"Relevance analysis: {relevance}")
             
             if relevance.startswith("NOT_RELEVANT"):
-                return "I apologize, but I don't have specific information about that in my knowledge base."
+                return "I'm sorry, but I'm not familiar with that aspect of Kayako."
             
             # If relevant, generate the response
             response = openai_client.chat.completions.create(
