@@ -38,7 +38,7 @@ class RAGRetriever:
                 'text': text
             })
             
-    def retrieve(self, query: str, top_k: int = 3) -> List[Dict]:
+    def retrieve(self, query: str, top_k: int = 3, threshold: float = 0.7) -> List[Dict]:
         """Retrieve most relevant articles for a query"""
         # Get query embedding
         query_embedding = self.openai_client.embeddings.create(
@@ -50,7 +50,8 @@ class RAGRetriever:
         similarities = []
         for doc in self.embeddings:
             similarity = np.dot(query_embedding, doc['embedding'])
-            similarities.append((similarity, doc))
+            if similarity >= threshold:  # Only include results above threshold
+                similarities.append((similarity, doc))
             
         # Sort by similarity
         similarities.sort(reverse=True)
