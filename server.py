@@ -230,26 +230,23 @@ async def handle_input(request: Request):
 # RAG Knowledge Retrieval
 def retrieve_data(query):
     # Get relevant articles
-    results = rag.retrieve(query, top_k=2, threshold=0.7)
-    
-    if not results:
-        return "NO_RELEVANT_DOCS"
+    results = rag.retrieve(query, top_k=2)
     
     # Format the context
     context = []
     for result in results:
         context.append(f"Article: {result['title']}\n{result['text'][:500]}...")
         
-    return "\n\n".join(context)
+    return "\n\n".join(context) if context else "NO_ARTICLES_FOUND"
 
 # OpenAI LLM Response Formatting
 def format_response(knowledge):
     max_retries = 3
     base_delay = 1  # seconds
     
-    # If no relevant docs found, return standard response
-    if knowledge == "NO_RELEVANT_DOCS":
-        return "I apologize, but I don't have specific information about that in my knowledge base. Would you like me to connect you with a human support agent?"
+    # If no articles found
+    if knowledge == "NO_ARTICLES_FOUND":
+        return "I apologize, but I don't have any information about that in my knowledge base. Would you like me to connect you with a human support agent?"
     
     for attempt in range(max_retries):
         try:
@@ -257,7 +254,7 @@ def format_response(knowledge):
                 model="gpt-3.5-turbo",
                 messages=[
                     {"role": "system", "content": SYSTEM_PROMPT.format(context=knowledge)},
-                    {"role": "user", "content": knowledge}
+                    {"role": "user", "content": f"Question: {context.get('last_query')}\n\nAvailable documentation:\n{knowledge}"}
                 ]
             )
             return response.choices[0].message.content

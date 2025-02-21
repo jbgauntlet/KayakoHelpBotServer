@@ -4,6 +4,9 @@ from pathlib import Path
 import html2text
 from openai import OpenAI
 import numpy as np
+import logging
+
+logger = logging.getLogger(__name__)
 
 class RAGRetriever:
     def __init__(self, openai_client: OpenAI):
@@ -38,7 +41,7 @@ class RAGRetriever:
                 'text': text
             })
             
-    def retrieve(self, query: str, top_k: int = 3, threshold: float = 0.7) -> List[Dict]:
+    def retrieve(self, query: str, top_k: int = 2) -> List[Dict]:
         """Retrieve most relevant articles for a query"""
         # Get query embedding
         query_embedding = self.openai_client.embeddings.create(
@@ -50,9 +53,8 @@ class RAGRetriever:
         similarities = []
         for doc in self.embeddings:
             similarity = np.dot(query_embedding, doc['embedding'])
-            if similarity >= threshold:  # Only include results above threshold
-                similarities.append((similarity, doc))
-                print(doc['title'])
+            similarities.append((similarity, doc))
+            logger.debug(f"Article: {doc['title']}, Similarity: {similarity}")
             
         # Sort by similarity
         similarities.sort(reverse=True)
