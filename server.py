@@ -1,3 +1,6 @@
+# FastAPI server for Kayako Help Center voice bot
+# Handles voice calls using Twilio and provides responses using OpenAI and RAG
+
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import Response
 from openai import OpenAI, RateLimitError
@@ -28,27 +31,28 @@ TWILIO_SID = os.getenv("TWILIO_SID")
 TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
 TWILIO_NUMBER = os.getenv("TWILIO_NUMBER")
 
-# Initialize clients
+# Initialize external service clients
 twilio_client = Client(TWILIO_SID, TWILIO_AUTH_TOKEN)
 openai_client = OpenAI(api_key=OPENAI_API_KEY)
 
-# Initialize RAG
+# Initialize RAG system with help articles
 rag = RAGRetriever(openai_client)
 rag.load_articles(['sample-help.json', 'sample-help-2.json'])
 rag.process_articles()
 
-# Conversation context storage
+# Store conversation state for each active call
 conversation_context: Dict[str, Dict] = {}
 
-# Constants for conversation control
+# Constants for conversation control and limits
 MAX_INVALID_ATTEMPTS = 3    # Maximum number of off-topic or unclear responses
 MAX_SILENCE_ATTEMPTS = 3    # Maximum number of silent/no-input attempts
 MAX_TOTAL_TURNS = 50       # Maximum number of conversation turns (much higher as these are valid turns)
 
+# Valid intents for user responses
 IntentType = Literal["END_CALL", "CONTINUE", "CONNECT_HUMAN", "UNCLEAR", "OFF_TOPIC"]
 
 def classify_intent(response: str, context: str) -> IntentType:
-    """Use LLM to classify user's intent"""
+    # Use LLM to classify user's intent
     try:
         classification = openai_client.chat.completions.create(
             model="gpt-3.5-turbo",
@@ -70,6 +74,7 @@ def classify_intent(response: str, context: str) -> IntentType:
 
 @app.post("/voice")
 async def handle_call():
+    # Initial endpoint for new calls. Provides welcome message and starts conversation.
     twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     <Say>Thank you for calling the Kayako Help Center today. How may I assist you?</Say>
@@ -79,32 +84,38 @@ async def handle_call():
 
 @app.post("/handle-input")
 async def handle_input(request: Request):
+    # Main conversation handler. Processes user input and generates appropriate responses.
+    
+    # Extract speech and call data from the request
     form_data = await request.form()
     speech_result = form_data.get("SpeechResult", "")
     call_sid = form_data.get("CallSid", "")
     logger.info(f"Received speech: {speech_result}")
 
-    # Get or initialize conversation context
+    # Initialize or retrieve conversation context for this call
     context = conversation_context.get(call_sid, {
-        "last_query": None,
-        "current_question": None,
-        "invalid_attempts": 0,    # Counter for off-topic/unclear responses
-        "silence_attempts": 0,    # Counter for no-input responses
-        "total_turns": 0         # Counter for total conversation turns
+        "last_query": None,          # Store the most recent user question
+        "current_question": None,     # Track what we last asked the user
+        "invalid_attempts": 0,        # Count off-topic/unclear responses
+        "silence_attempts": 0,        # Count no-input responses
+        "total_turns": 0             # Track total conversation length
     })
 
+    # Handle silence or no speech input
     if not speech_result:
         context["silence_attempts"] = context.get("silence_attempts", 0) + 1
         
+        # If too many silent attempts, end call politely
         if context["silence_attempts"] >= MAX_SILENCE_ATTEMPTS:
             twiml = """<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     <Say>I'm having trouble with processing your response. Please try calling back, and we'll be happy to help you with your Kayako questions. Have a great day!</Say>
     <Hangup/>
 </Response>"""
-            conversation_context.pop(call_sid, None)
+            conversation_context.pop(call_sid, None)  # Clean up context
             return Response(content=twiml, media_type="application/xml")
             
+        # Otherwise, prompt for retry
         twiml = """<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     <Say>I didn't catch that. Could you please try your question again?</Say>
@@ -113,13 +124,13 @@ async def handle_input(request: Request):
         conversation_context[call_sid] = context
         return Response(content=twiml, media_type="application/xml")
 
-    # Reset silence counter when we get a response
+    # Reset silence counter on valid response
     context["silence_attempts"] = 0
     
-    # Increment total turns only for valid speech input
+    # Track conversation length
     context["total_turns"] = context.get("total_turns", 0) + 1
     
-    # Check if we've exceeded maximum turns
+    # End conversation if it's getting too long
     if context["total_turns"] > MAX_TOTAL_TURNS:
         twiml = """<?xml version="1.0" encoding="UTF-8"?>
 <Response>
@@ -129,13 +140,13 @@ async def handle_input(request: Request):
         conversation_context.pop(call_sid, None)
         return Response(content=twiml, media_type="application/xml")
 
-    # Classify user's intent based on context
+    # Determine user's intent based on their response
     intent = classify_intent(
         speech_result,
         f"Current question: {context.get('current_question', 'How may I assist you?')}"
     )
     
-    # Handle different intents
+    # Handle end of conversation
     if context.get("current_question") == "Do you need help with anything else?":
         if intent == "END_CALL":
             twiml = """<?xml version="1.0" encoding="UTF-8"?>
@@ -146,6 +157,7 @@ async def handle_input(request: Request):
             conversation_context.pop(call_sid, None)
             return Response(content=twiml, media_type="application/xml")
     
+    # Handle human agent connection requests
     if context.get("current_question") == "Would you like me to connect you with a human support agent?":
         if intent == "CONNECT_HUMAN":
             twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
@@ -165,11 +177,11 @@ async def handle_input(request: Request):
             conversation_context[call_sid] = context
             return Response(content=twiml, media_type="application/xml")
     
-    # Handle invalid responses (OFF_TOPIC or UNCLEAR)
+    # Handle unclear or off-topic responses
     if intent in ["OFF_TOPIC", "UNCLEAR"]:
         context["invalid_attempts"] = context.get("invalid_attempts", 0) + 1
         
-        # Check if we've exceeded maximum invalid attempts
+        # Transfer to human after too many invalid attempts
         if context["invalid_attempts"] >= MAX_INVALID_ATTEMPTS:
             twiml = """<?xml version="1.0" encoding="UTF-8"?>
 <Response>
@@ -179,6 +191,7 @@ async def handle_input(request: Request):
             conversation_context.pop(call_sid, None)
             return Response(content=twiml, media_type="application/xml")
         
+        # Handle off-topic vs unclear responses differently
         if intent == "OFF_TOPIC":
             twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
@@ -199,16 +212,15 @@ async def handle_input(request: Request):
     # Reset invalid attempts counter for valid responses
     context["invalid_attempts"] = 0
     
-    # Store the current query
+    # Store the current query for context
     context["last_query"] = speech_result
     
-    # Get relevant knowledge
+    # Generate response using RAG and LLM
     knowledge = retrieve_data(speech_result)
-    # Generate response
     llm_response = format_response(knowledge, speech_result)
     logger.info(f"AI Response: {llm_response}")
 
-    # Set the current question for context in next interaction
+    # Determine follow-up question based on response
     current_question = "Do you need help with anything else?"
     if "connect you with a human" in llm_response:
         current_question = "Would you like me to connect you with a human support agent?"
@@ -216,7 +228,7 @@ async def handle_input(request: Request):
     context["current_question"] = current_question
     conversation_context[call_sid] = context
 
-    # Respond and continue listening
+    # Deliver response and gather next input
     twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     <Say>{llm_response}</Say>
@@ -227,8 +239,15 @@ async def handle_input(request: Request):
 
     return Response(content=twiml, media_type="application/xml")
 
-# RAG Knowledge Retrieval
-def retrieve_data(query):
+def retrieve_data(query: str) -> str:
+    # Retrieve relevant articles from the knowledge base using RAG
+    #
+    # Args:
+    #     query: User's question or request
+    #        
+    # Returns:
+    #     Formatted string containing relevant article content
+    
     # Get relevant articles
     results = rag.retrieve(query, top_k=2)
     
@@ -244,14 +263,22 @@ def retrieve_data(query):
         
     return "\n\n---\n\n".join(context)
 
-# OpenAI LLM Response Formatting
-def format_response(knowledge: str, query: str):
+def format_response(knowledge: str, query: str) -> str:
+    # Generate a natural language response using OpenAI based on retrieved knowledge
+    #
+    # Args:
+    #     knowledge: Retrieved article content
+    #     query: User's original question
+    #        
+    # Returns:
+    #     Natural language response suitable for text-to-speech
+    
     max_retries = 3
     base_delay = 1  # seconds
     
     for attempt in range(max_retries):
         try:
-            # First, ask the model to analyze the relevance
+            # First, analyze if the retrieved content is relevant
             analysis = openai_client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[
@@ -263,10 +290,11 @@ def format_response(knowledge: str, query: str):
             relevance = analysis.choices[0].message.content
             logger.debug(f"Relevance analysis: {relevance}")
             
+            # Handle cases where no relevant information is found
             if relevance.startswith("NOT_RELEVANT"):
                 return "I'm sorry, but I'm not familiar with that aspect of Kayako."
             
-            # If relevant, generate the response
+            # Generate natural response from relevant content
             response = openai_client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[
@@ -275,12 +303,15 @@ def format_response(knowledge: str, query: str):
                 ]
             )
             return response.choices[0].message.content
+            
         except RateLimitError as e:
+            # Handle rate limits with exponential backoff
             if attempt == max_retries - 1:
                 logger.error(f"OpenAI rate limit exceeded after {max_retries} attempts")
                 return "I apologize, but I'm currently experiencing high demand. Please try again in a moment."
             delay = base_delay * (2 ** attempt)  # exponential backoff
             time.sleep(delay)
         except Exception as e:
+            # Handle other API errors
             logger.error(f"Error in OpenAI API call: {e}")
             return "I apologize, but I'm having trouble processing your request right now."
