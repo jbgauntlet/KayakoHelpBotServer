@@ -52,6 +52,7 @@ class RAGRetriever:
             similarity = np.dot(query_embedding, doc['embedding'])
             if similarity >= threshold:  # Only include results above threshold
                 similarities.append((similarity, doc))
+                print(doc['title'])
             
         # Sort by similarity
         similarities.sort(reverse=True)
