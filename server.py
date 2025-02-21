@@ -235,9 +235,14 @@ def retrieve_data(query):
     # Format the context
     context = []
     for result in results:
-        context.append(f"Article: {result['title']}\n{result['text'][:500]}...")
+        # Take more content and format it better
+        content = result['text'][:1500]  # Increased from 500 to 1500 characters
+        # Clean up the content
+        content = content.replace("#", "").replace("*", "").strip()
+        context.append(f"Title: {result['title']}\n\n{content}")
+        logger.debug(f"Retrieved article: {result['title']}\nContent preview: {content[:200]}...")
         
-    return "\n\n".join(context) if context else "NO_ARTICLES_FOUND"
+    return "\n\n---\n\n".join(context) if context else "NO_ARTICLES_FOUND"
 
 # OpenAI LLM Response Formatting
 def format_response(knowledge: str, query: str):
@@ -250,11 +255,27 @@ def format_response(knowledge: str, query: str):
     
     for attempt in range(max_retries):
         try:
+            # First, ask the model to analyze the relevance
+            analysis = openai_client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {"role": "system", "content": "You are an expert at analyzing whether documentation is relevant to a user's question. Respond with 'RELEVANT' or 'NOT_RELEVANT' followed by a brief reason."},
+                    {"role": "user", "content": f"Question: {query}\n\nDocumentation:\n{knowledge}"}
+                ],
+                temperature=0
+            )
+            relevance = analysis.choices[0].message.content
+            logger.debug(f"Relevance analysis: {relevance}")
+            
+            if relevance.startswith("NOT_RELEVANT"):
+                return "I apologize, but I don't have specific information about that in my knowledge base. Would you like me to connect you with a human support agent?"
+            
+            # If relevant, generate the response
             response = openai_client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT.format(context=knowledge)},
-                    {"role": "user", "content": f"Question: {query}\n\nAvailable documentation:\n{knowledge}"}
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": f"User's question: {query}\n\nRelevant documentation:\n{knowledge}"}
                 ]
             )
             return response.choices[0].message.content
