@@ -264,7 +264,7 @@ def format_response(knowledge: str, query: str):
             logger.debug(f"Relevance analysis: {relevance}")
             
             if relevance.startswith("NOT_RELEVANT"):
-                return "I apologize, but I don't have specific information about that in my knowledge base. Would you like me to connect you with a human support agent?"
+                return "I apologize, but I don't have specific information about that in my knowledge base."
             
             # If relevant, generate the response
             response = openai_client.chat.completions.create(
