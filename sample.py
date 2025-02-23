@@ -14,35 +14,12 @@ load_dotenv()
 # Configuration
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 PORT = int(os.getenv('PORT', 5050))
-SYSTEM_MESSAGE = """
-You are a helpful and bubbly customer support agent for Kayako who loves to chat to customers. 
-You specialize in providing clear, actionable answers based on Kayako's documentation.
-
-When responding:
-1. Be concise and clear - suitable for phone conversation
-2. Use a natural, conversational tone
-3. Focus on providing specific, actionable steps
-4. If the documentation contains relevant information, even if partial, use it to help the user
-5. Never suggest connecting to a human agent - the system will handle that automatically
-
-Evaluate the provided documentation:
-- If it contains ANY relevant information to answer the question, use it to provide specific guidance
-- If it's completely unrelated or doesn't help answer the question at all, respond with:
-"I'm sorry, but I'm not I can help you with that."
-
-When providing instructions:
-- Convert any technical steps into natural spoken language
-- Focus on the "what" and "how" rather than technical details
-- Keep steps sequential and clear
-- Avoid technical jargon unless necessary
-
-Keep responses under 3-4 sentences when possible, but ensure all critical steps are included."""
-# SYSTEM_MESSAGE = (
-#     "You are a helpful and bubbly AI assistant who loves to chat about "
-#     "anything the user is interested in and is prepared to offer them facts. "
-#     "You have a penchant for dad jokes, owl jokes, and rickrolling – subtly. "
-#     "Always stay positive, but work in a joke when appropriate."
-# )
+SYSTEM_MESSAGE = (
+    "You are a helpful and bubbly AI assistant who loves to chat about "
+    "anything the user is interested in and is prepared to offer them facts. "
+    "You have a penchant for dad jokes, owl jokes, and rickrolling – subtly. "
+    "Always stay positive, but work in a joke when appropriate."
+)
 VOICE = 'alloy'
 LOG_EVENT_TYPES = [
     'error', 'response.content.done', 'rate_limits.updated',
@@ -66,9 +43,9 @@ async def handle_incoming_call(request: Request):
     """Handle incoming call and return TwiML response to connect to Media Stream."""
     response = VoiceResponse()
     # <Say> punctuation to improve text-to-speech flow
-    # response.say("Please wait while we connect your call to the A. I. voice assistant, powered by Twilio and the Open-A.I. Realtime API")
-    # response.pause(length=1)
-    # response.say("O.K. you can start talking!")
+    response.say("Please wait while we connect your call to the A. I. voice assistant, powered by Twilio and the Open-A.I. Realtime API")
+    response.pause(length=1)
+    response.say("O.K. you can start talking!")
     host = request.url.hostname
     connect = Connect()
     connect.stream(url=f'wss://{host}/media-stream')
@@ -138,13 +115,6 @@ async def handle_media_stream(websocket: WebSocket):
                     response = json.loads(openai_message)
                     if response['type'] in LOG_EVENT_TYPES:
                         print(f"Received event: {response['type']}", response)
-
-                    if response.get('type') == 'response.content.done':
-                        print(f"Response content done: {response}")
-                    elif response.get('type') == 'response.done':
-                        print(f"Response done: {response}")
-                    elif response.get('type') == 'response.audio.delta':
-                        print(f"Response audio delta: {response}")
 
                     if response.get('type') == 'response.audio.delta' and 'delta' in response:
                         audio_payload = base64.b64encode(base64.b64decode(response['delta'])).decode('utf-8')
@@ -229,7 +199,7 @@ async def send_initial_conversation_item(openai_ws):
             "content": [
                 {
                     "type": "input_text",
-                    "text": "Greet the user with 'Hello! I am Kayako's help center assistant. How can I assist you today?'"
+                    "text": "Greet the user with 'Hello there! I am an AI voice assistant powered by Twilio and the OpenAI Realtime API. You can ask me for facts, jokes, or anything you can imagine. How can I help you?'"
                 }
             ]
         }
@@ -256,7 +226,7 @@ async def initialize_session(openai_ws):
     await openai_ws.send(json.dumps(session_update))
 
     # Uncomment the next line to have the AI speak first
-    await send_initial_conversation_item(openai_ws)
+    # await send_initial_conversation_item(openai_ws)
 
 if __name__ == "__main__":
     import uvicorn
