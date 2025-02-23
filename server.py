@@ -563,12 +563,11 @@ def classify_intent(response: str, context: str) -> IntentType:
 @app.post("/voice")
 async def handle_call():
     # This is the entry point for new phone calls
-    # It answers the call and starts the conversation
+    # It answers the call and starts the conversation with Media Streams
     twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-    <Say>Thank you for calling the Kayako Help Center today. How may I assist you?</Say>
     <Connect>
-        <Stream url="{os.getenv('SERVER_URL')}/media" />
+        <Stream url="{os.getenv('SERVER_URL')}/media" mode="full-duplex"/>
     </Connect>
 </Response>"""
     return Response(content=twiml, media_type="application/xml")
@@ -602,6 +601,23 @@ async def media_stream(websocket: WebSocket):
                 
                 logger.info(f"Started streaming session for call {call_sid}")
                 
+                # Initialize conversation context
+                conversation_context[call_sid] = {
+                    "last_query": None,          # What the user last asked
+                    "current_question": None,     # What we last asked the user
+                    "invalid_attempts": 0,        # Count of unclear responses
+                    "silence_attempts": 0,        # Count of silent responses
+                    "total_turns": 0             # How many exchanges in this call
+                }
+                
+                # Send initial greeting through the stream
+                await websocket.send_json({
+                    "event": "response",
+                    "text": "Thank you for calling the Kayako Help Center today. How may I assist you?",
+                    "is_final": True,
+                    "position": 1
+                })
+                
                 # Start heartbeat task
                 heartbeat_task = asyncio.create_task(send_heartbeat())
         
@@ -625,7 +641,95 @@ async def media_stream(websocket: WebSocket):
                         # Process audio chunk with backpressure handling
                         chunk = base64.b64decode(msg["media"]["payload"])
                         if transcript := await streaming_processor.process_chunk(call_sid, chunk, websocket):
-                            # Get response knowledge
+                            # Get conversation context
+                            context = conversation_context.get(call_sid)
+                            if not context:
+                                logger.error(f"No context found for call {call_sid}")
+                                continue
+                                
+                            # Update conversation turns
+                            context["total_turns"] = context.get("total_turns", 0) + 1
+                            
+                            # Check for maximum conversation length
+                            if context["total_turns"] > MAX_TOTAL_TURNS:
+                                await websocket.send_json({
+                                    "event": "response",
+                                    "text": "I notice this has been a long conversation. To ensure quality service, let me connect you with a human agent who can provide more comprehensive assistance.",
+                                    "is_final": True,
+                                    "position": context["total_turns"]
+                                })
+                                await websocket.send_json({"event": "end"})
+                                break
+                            
+                            # Classify user intent
+                            intent = classify_intent(
+                                transcript,
+                                f"Current question: {context.get('current_question', 'How may I assist you?')}"
+                            )
+                            
+                            # Handle end of conversation
+                            if context.get("current_question") == "Do you need help with anything else?" and intent == "END_CALL":
+                                await websocket.send_json({
+                                    "event": "response",
+                                    "text": "Thank you for calling Kayako Help Center. Have a great day!",
+                                    "is_final": True,
+                                    "position": context["total_turns"]
+                                })
+                                await websocket.send_json({"event": "end"})
+                                break
+                            
+                            # Handle human agent requests
+                            if context.get("current_question") == "Would you like me to connect you with a human support agent?":
+                                if intent == "CONNECT_HUMAN":
+                                    await websocket.send_json({
+                                        "event": "response",
+                                        "text": f"I'll connect you with a human agent regarding your question about {context['last_query']}. Please hold.",
+                                        "is_final": True,
+                                        "position": context["total_turns"]
+                                    })
+                                    await websocket.send_json({"event": "end"})
+                                    break
+                                elif intent == "END_CALL":
+                                    await websocket.send_json({
+                                        "event": "response",
+                                        "text": "Alright, what else can I help you with?",
+                                        "is_final": True,
+                                        "position": context["total_turns"]
+                                    })
+                                    context["current_question"] = "What else can I help you with?"
+                                    continue
+                            
+                            # Handle unclear or off-topic responses
+                            if intent in ["OFF_TOPIC", "UNCLEAR"]:
+                                context["invalid_attempts"] = context.get("invalid_attempts", 0) + 1
+                                
+                                if context["invalid_attempts"] >= MAX_INVALID_ATTEMPTS:
+                                    await websocket.send_json({
+                                        "event": "response",
+                                        "text": "I apologize, but I'm having trouble understanding your needs. Let me connect you with a human agent who can better assist you.",
+                                        "is_final": True,
+                                        "position": context["total_turns"]
+                                    })
+                                    await websocket.send_json({"event": "end"})
+                                    break
+                                
+                                response_text = "I can only assist with questions related to Kayako and its services. Please ask a Kayako-related question." if intent == "OFF_TOPIC" else "I'm not sure I understood. Could you please rephrase your question about Kayako?"
+                                await websocket.send_json({
+                                    "event": "response",
+                                    "text": response_text,
+                                    "is_final": True,
+                                    "position": context["total_turns"]
+                                })
+                                context["current_question"] = "Please ask a Kayako-related question"
+                                continue
+                            
+                            # Reset invalid counter for valid responses
+                            context["invalid_attempts"] = 0
+                            
+                            # Remember what they asked
+                            context["last_query"] = transcript
+                            
+                            # Get response knowledge and generate response
                             knowledge = await response_cache.get_knowledge(transcript)
                             
                             # Start response stream with interruption handling
@@ -635,6 +739,20 @@ async def media_stream(websocket: WebSocket):
                                 knowledge=knowledge,
                                 query=transcript
                             )
+                            
+                            # Update current question based on response
+                            current_question = "Do you need help with anything else?"
+                            if "connect you with a human" in knowledge:
+                                current_question = "Would you like me to connect you with a human support agent?"
+                            context["current_question"] = current_question
+                            
+                            # Send follow-up question
+                            await websocket.send_json({
+                                "event": "response",
+                                "text": current_question,
+                                "is_final": True,
+                                "position": context["total_turns"] + 1
+                            })
                             
                     elif msg["event"] == "stop":
                         logger.info(f"Stopping stream for call {call_sid}")
@@ -671,6 +789,7 @@ async def media_stream(websocket: WebSocket):
             await streaming_processor.handle_interrupt(call_sid)
         if call_sid:
             await streaming_processor.cleanup_old_buffers()
+            conversation_context.pop(call_sid, None)  # Clean up conversation context
         if heartbeat_task:
             heartbeat_task.cancel()
             try:
@@ -682,169 +801,6 @@ async def media_stream(websocket: WebSocket):
             await websocket.close()
         except websockets.exceptions.ConnectionClosed:
             pass
-
-@app.post("/handle-input")
-async def handle_input(request: Request):
-    # This handles the conversation flow and generates responses
-    
-    # Get the speech recognition result and call ID
-    form_data = await request.form()
-    speech_result = form_data.get("SpeechResult", "")
-    call_sid = form_data.get("CallSid", "")
-    logger.info(f"Received speech: {speech_result}")
-
-    # Get or create the conversation history for this call
-    context = conversation_context.get(call_sid, {
-        "last_query": None,          # What the user last asked
-        "current_question": None,     # What we last asked the user
-        "invalid_attempts": 0,        # Count of unclear responses
-        "silence_attempts": 0,        # Count of silent responses
-        "total_turns": 0             # How many exchanges in this call
-    })
-
-    # Handle when the user doesn't say anything
-    if not speech_result:
-        context["silence_attempts"] = context.get("silence_attempts", 0) + 1
-        
-        # If they've been silent too many times, end the call
-        if context["silence_attempts"] >= MAX_SILENCE_ATTEMPTS:
-            twiml = """<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-    <Say>I'm having trouble with processing your response. Please try calling back, and we'll be happy to help you with your Kayako questions. Have a great day!</Say>
-    <Hangup/>
-</Response>"""
-            conversation_context.pop(call_sid, None)  # Clean up
-            return Response(content=twiml, media_type="application/xml")
-            
-        # Ask them to try again
-        twiml = """<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-    <Say>I didn't catch that. Could you please try your question again?</Say>
-    <Gather input="speech" action="/handle-input" method="POST" speechTimeout="1" language="en-US"/>
-</Response>"""
-        conversation_context[call_sid] = context
-        return Response(content=twiml, media_type="application/xml")
-
-    # They said something, so reset the silence counter
-    context["silence_attempts"] = 0
-    
-    # Keep track of conversation length
-    context["total_turns"] = context.get("total_turns", 0) + 1
-    
-    # End very long conversations
-    if context["total_turns"] > MAX_TOTAL_TURNS:
-        twiml = """<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-    <Say>I notice this has been a long conversation. To ensure quality service, let me connect you with a human agent who can provide more comprehensive assistance.</Say>
-    <Hangup/>
-</Response>"""
-        conversation_context.pop(call_sid, None)
-        return Response(content=twiml, media_type="application/xml")
-
-    # Figure out what the user wants
-    intent = classify_intent(
-        speech_result,
-        f"Current question: {context.get('current_question', 'How may I assist you?')}"
-    )
-    
-    # Handle end of conversation
-    if context.get("current_question") == "Do you need help with anything else?":
-        if intent == "END_CALL":
-            twiml = """<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-    <Say>Thank you for calling Kayako Help Center. Have a great day!</Say>
-    <Hangup/>
-</Response>"""
-            conversation_context.pop(call_sid, None)
-            return Response(content=twiml, media_type="application/xml")
-    
-    # Handle requests to talk to a human
-    if context.get("current_question") == "Would you like me to connect you with a human support agent?":
-        if intent == "CONNECT_HUMAN":
-            twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-    <Say>I'll connect you with a human agent regarding your question about {context['last_query']}. Please hold.</Say>
-    <Hangup/>
-</Response>"""
-            conversation_context.pop(call_sid, None)
-            return Response(content=twiml, media_type="application/xml")
-        elif intent == "END_CALL":
-            twiml = """<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-    <Say>Alright, what else can I help you with?</Say>
-    <Gather input="speech" action="/handle-input" method="POST" speechTimeout="1" language="en-US"/>
-</Response>"""
-            context["current_question"] = "What else can I help you with?"
-            conversation_context[call_sid] = context
-            return Response(content=twiml, media_type="application/xml")
-    
-    # Handle unclear or off-topic responses
-    if intent in ["OFF_TOPIC", "UNCLEAR"]:
-        context["invalid_attempts"] = context.get("invalid_attempts", 0) + 1
-        
-        # If they've been unclear too many times, transfer to human
-        if context["invalid_attempts"] >= MAX_INVALID_ATTEMPTS:
-            twiml = """<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-    <Say>I apologize, but I'm having trouble understanding your needs. Let me connect you with a human agent who can better assist you.</Say>
-    <Hangup/>
-</Response>"""
-            conversation_context.pop(call_sid, None)
-            return Response(content=twiml, media_type="application/xml")
-        
-        # Give different responses for off-topic vs unclear
-        if intent == "OFF_TOPIC":
-            twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-    <Say>I can only assist with questions related to Kayako and its services. Please ask a Kayako-related question.</Say>
-    <Gather input="speech" action="/handle-input" method="POST" speechTimeout="1" language="en-US"/>
-</Response>"""
-        else:  # UNCLEAR
-            twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-    <Say>I'm not sure I understood. Could you please rephrase your question about Kayako?</Say>
-    <Gather input="speech" action="/handle-input" method="POST" speechTimeout="1" language="en-US"/>
-</Response>"""
-        
-        context["current_question"] = "Please ask a Kayako-related question"
-        conversation_context[call_sid] = context
-        return Response(content=twiml, media_type="application/xml")
-    
-    # Reset the invalid counter for valid responses
-    context["invalid_attempts"] = 0
-    
-    # Remember what they asked
-    context["last_query"] = speech_result
-    
-    # Get the answer to their question
-    knowledge = await response_cache.get_knowledge(speech_result)
-    
-    # Get the response in chunks and join them
-    response_parts = []
-    async for response_chunk in format_response(knowledge, speech_result):
-        response_parts.append(response_chunk)
-    llm_response = " ".join(response_parts)
-    
-    logger.info(f"AI Response: {llm_response}")
-
-    # Figure out what to ask them next
-    current_question = "Do you need help with anything else?"
-    if "connect you with a human" in llm_response:
-        current_question = "Would you like me to connect you with a human support agent?"
-    
-    context["current_question"] = current_question
-    conversation_context[call_sid] = context
-
-    # Send our response and wait for their next question
-    twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-    <Say>{llm_response}</Say>
-    <Gather input="speech" action="/handle-input" method="POST" speechTimeout="1" language="en-US">
-        <Say>{current_question}</Say>
-    </Gather>
-</Response>"""
-
-    return Response(content=twiml, media_type="application/xml")
 
 def retrieve_data(query: str) -> str:
     # Get relevant information from our knowledge base
