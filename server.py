@@ -566,9 +566,11 @@ async def handle_call():
     # It answers the call and starts the conversation with Media Streams
     twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-    <Connect>
+    <Start>
         <Stream url="{os.getenv('SERVER_URL')}/media" mode="full-duplex"/>
-    </Connect>
+    </Start>
+    <Pause length="120"/>
+    <Redirect method="POST">{os.getenv('SERVER_URL')}/voice</Redirect>
 </Response>"""
     return Response(content=twiml, media_type="application/xml")
 
@@ -577,6 +579,7 @@ async def media_stream(websocket: WebSocket):
     await websocket.accept()
     call_sid = None
     heartbeat_task = None
+    stream_sid = None
     
     async def send_heartbeat():
         try:
@@ -589,175 +592,97 @@ async def media_stream(websocket: WebSocket):
             logger.error(f"Error in heartbeat: {e}")
     
     try:
-        # Set timeout for receiving initial connection data
-        async with asyncio.timeout(5.0):
-            data = await websocket.receive_text()
-            msg = json.loads(data)
+        # Wait for the initial connected message from Twilio
+        data = await websocket.receive_text()
+        msg = json.loads(data)
+        if msg.get("event") != "connected":
+            raise ValueError("Expected 'connected' event")
+        logger.info("Received connected event")
+        
+        # Wait for the start message which contains call metadata
+        data = await websocket.receive_text()
+        msg = json.loads(data)
+        if msg.get("event") != "start":
+            raise ValueError("Expected 'start' event")
             
-            if msg.get("event") == "start":
-                call_sid = msg.get("start", {}).get("callSid")
-                if not call_sid:
-                    raise ValueError("No CallSid provided")
-                
-                logger.info(f"Started streaming session for call {call_sid}")
-                
-                # Initialize conversation context
-                conversation_context[call_sid] = {
-                    "last_query": None,          # What the user last asked
-                    "current_question": None,     # What we last asked the user
-                    "invalid_attempts": 0,        # Count of unclear responses
-                    "silence_attempts": 0,        # Count of silent responses
-                    "total_turns": 0             # How many exchanges in this call
-                }
-                
-                # Send initial greeting through the stream
-                await websocket.send_json({
-                    "event": "response",
-                    "text": "Thank you for calling the Kayako Help Center today. How may I assist you?",
-                    "is_final": True,
-                    "position": 1
-                })
-                
-                # Start heartbeat task
-                heartbeat_task = asyncio.create_task(send_heartbeat())
+        # Extract important metadata
+        start_data = msg.get("start", {})
+        call_sid = start_data.get("callSid")
+        stream_sid = start_data.get("streamSid")
+        if not call_sid or not stream_sid:
+            raise ValueError("Missing callSid or streamSid")
+        
+        logger.info(f"Started streaming session for call {call_sid}")
+        
+        # Initialize conversation context
+        conversation_context[call_sid] = {
+            "last_query": None,
+            "current_question": None,
+            "invalid_attempts": 0,
+            "silence_attempts": 0,
+            "total_turns": 0
+        }
+        
+        # Send initial greeting
+        greeting = "Thank you for calling the Kayako Help Center today. How may I assist you?"
+        await websocket.send_json({
+            "event": "media",
+            "streamSid": stream_sid,
+            "media": {
+                "payload": base64.b64encode(greeting.encode()).decode()
+            }
+        })
+        # Send mark to track when greeting is done
+        await websocket.send_json({
+            "event": "mark",
+            "streamSid": stream_sid,
+            "mark": {
+                "name": "greeting_complete"
+            }
+        })
+        
+        # Start heartbeat task
+        heartbeat_task = asyncio.create_task(send_heartbeat())
         
         while True:
             try:
-                # Set timeout for receiving messages
-                async with asyncio.timeout(5.0):  # 5-second timeout for each message
-                    data = await websocket.receive_text()
-                    msg = json.loads(data)
-                    
-                    if msg["event"] == "interrupt":
-                        # Handle user interruption
-                        await streaming_processor.handle_interrupt(call_sid)
+                data = await websocket.receive_text()
+                msg = json.loads(data)
+                
+                if msg["event"] == "media":
+                    if not call_sid:
+                        logger.error("Received media without proper initialization")
                         continue
                     
-                    if msg["event"] == "media":
-                        if not call_sid:
-                            logger.error("Received media without proper initialization")
+                    # Process audio chunk
+                    chunk = base64.b64decode(msg["media"]["payload"])
+                    if transcript := await streaming_processor.process_chunk(call_sid, chunk, websocket):
+                        # Get conversation context
+                        context = conversation_context.get(call_sid)
+                        if not context:
+                            logger.error(f"No context found for call {call_sid}")
                             continue
                         
-                        # Process audio chunk with backpressure handling
-                        chunk = base64.b64decode(msg["media"]["payload"])
-                        if transcript := await streaming_processor.process_chunk(call_sid, chunk, websocket):
-                            # Get conversation context
-                            context = conversation_context.get(call_sid)
-                            if not context:
-                                logger.error(f"No context found for call {call_sid}")
-                                continue
-                                
-                            # Update conversation turns
-                            context["total_turns"] = context.get("total_turns", 0) + 1
-                            
-                            # Check for maximum conversation length
-                            if context["total_turns"] > MAX_TOTAL_TURNS:
-                                await websocket.send_json({
-                                    "event": "response",
-                                    "text": "I notice this has been a long conversation. To ensure quality service, let me connect you with a human agent who can provide more comprehensive assistance.",
-                                    "is_final": True,
-                                    "position": context["total_turns"]
-                                })
-                                await websocket.send_json({"event": "end"})
-                                break
-                            
-                            # Classify user intent
-                            intent = classify_intent(
-                                transcript,
-                                f"Current question: {context.get('current_question', 'How may I assist you?')}"
-                            )
-                            
-                            # Handle end of conversation
-                            if context.get("current_question") == "Do you need help with anything else?" and intent == "END_CALL":
-                                await websocket.send_json({
-                                    "event": "response",
-                                    "text": "Thank you for calling Kayako Help Center. Have a great day!",
-                                    "is_final": True,
-                                    "position": context["total_turns"]
-                                })
-                                await websocket.send_json({"event": "end"})
-                                break
-                            
-                            # Handle human agent requests
-                            if context.get("current_question") == "Would you like me to connect you with a human support agent?":
-                                if intent == "CONNECT_HUMAN":
-                                    await websocket.send_json({
-                                        "event": "response",
-                                        "text": f"I'll connect you with a human agent regarding your question about {context['last_query']}. Please hold.",
-                                        "is_final": True,
-                                        "position": context["total_turns"]
-                                    })
-                                    await websocket.send_json({"event": "end"})
-                                    break
-                                elif intent == "END_CALL":
-                                    await websocket.send_json({
-                                        "event": "response",
-                                        "text": "Alright, what else can I help you with?",
-                                        "is_final": True,
-                                        "position": context["total_turns"]
-                                    })
-                                    context["current_question"] = "What else can I help you with?"
-                                    continue
-                            
-                            # Handle unclear or off-topic responses
-                            if intent in ["OFF_TOPIC", "UNCLEAR"]:
-                                context["invalid_attempts"] = context.get("invalid_attempts", 0) + 1
-                                
-                                if context["invalid_attempts"] >= MAX_INVALID_ATTEMPTS:
-                                    await websocket.send_json({
-                                        "event": "response",
-                                        "text": "I apologize, but I'm having trouble understanding your needs. Let me connect you with a human agent who can better assist you.",
-                                        "is_final": True,
-                                        "position": context["total_turns"]
-                                    })
-                                    await websocket.send_json({"event": "end"})
-                                    break
-                                
-                                response_text = "I can only assist with questions related to Kayako and its services. Please ask a Kayako-related question." if intent == "OFF_TOPIC" else "I'm not sure I understood. Could you please rephrase your question about Kayako?"
-                                await websocket.send_json({
-                                    "event": "response",
-                                    "text": response_text,
-                                    "is_final": True,
-                                    "position": context["total_turns"]
-                                })
-                                context["current_question"] = "Please ask a Kayako-related question"
-                                continue
-                            
-                            # Reset invalid counter for valid responses
-                            context["invalid_attempts"] = 0
-                            
-                            # Remember what they asked
-                            context["last_query"] = transcript
-                            
-                            # Get response knowledge and generate response
-                            knowledge = await response_cache.get_knowledge(transcript)
-                            
-                            # Start response stream with interruption handling
-                            await streaming_processor.start_response_stream(
-                                call_sid=call_sid,
-                                websocket=websocket,
-                                knowledge=knowledge,
-                                query=transcript
-                            )
-                            
-                            # Update current question based on response
-                            current_question = "Do you need help with anything else?"
-                            if "connect you with a human" in knowledge:
-                                current_question = "Would you like me to connect you with a human support agent?"
-                            context["current_question"] = current_question
-                            
-                            # Send follow-up question
-                            await websocket.send_json({
-                                "event": "response",
-                                "text": current_question,
-                                "is_final": True,
-                                "position": context["total_turns"] + 1
-                            })
-                            
-                    elif msg["event"] == "stop":
-                        logger.info(f"Stopping stream for call {call_sid}")
-                        break
+                        # Process the transcript and generate response
+                        response = await process_user_input(transcript, context, stream_sid, websocket)
                         
+                        # Send mark to track when response is complete
+                        await websocket.send_json({
+                            "event": "mark",
+                            "streamSid": stream_sid,
+                            "mark": {
+                                "name": f"response_{context['total_turns']}_complete"
+                            }
+                        })
+                
+                elif msg["event"] == "mark":
+                    # Handle mark events (track when our audio finishes playing)
+                    logger.info(f"Received mark: {msg.get('mark', {}).get('name')}")
+                
+                elif msg["event"] == "stop":
+                    logger.info(f"Stopping stream for call {call_sid}")
+                    break
+                
             except asyncio.TimeoutError:
                 # Send ping to check connection
                 try:
@@ -766,14 +691,6 @@ async def media_stream(websocket: WebSocket):
                     logger.warning(f"WebSocket connection lost for call {call_sid}")
                     break
                     
-    except asyncio.TimeoutError:
-        logger.warning(f"WebSocket timeout for call {call_sid}")
-        await websocket.send_json({
-            "event": "error",
-            "message": "Connection timed out"
-        })
-    except websockets.exceptions.ConnectionClosed:
-        logger.warning(f"WebSocket connection closed for call {call_sid}")
     except Exception as e:
         logger.error(f"Error in media stream: {e}")
         try:
@@ -784,23 +701,73 @@ async def media_stream(websocket: WebSocket):
         except websockets.exceptions.ConnectionClosed:
             pass
     finally:
-        # Clean up any active streams
+        # Clean up
         if call_sid and call_sid in streaming_processor.active_streams:
             await streaming_processor.handle_interrupt(call_sid)
         if call_sid:
             await streaming_processor.cleanup_old_buffers()
-            conversation_context.pop(call_sid, None)  # Clean up conversation context
+            conversation_context.pop(call_sid, None)
         if heartbeat_task:
             heartbeat_task.cancel()
             try:
                 await heartbeat_task
             except asyncio.CancelledError:
                 pass
-        # Ensure WebSocket is closed
         try:
             await websocket.close()
         except websockets.exceptions.ConnectionClosed:
             pass
+
+async def process_user_input(transcript: str, context: dict, stream_sid: str, websocket: WebSocket) -> None:
+    """Process user input and send appropriate response"""
+    # Update conversation turns
+    context["total_turns"] = context.get("total_turns", 0) + 1
+    
+    # Classify user intent
+    intent = classify_intent(
+        transcript,
+        f"Current question: {context.get('current_question', 'How may I assist you?')}"
+    )
+    
+    # Generate appropriate response
+    response_text = await generate_response(transcript, intent, context)
+    
+    # Send response as media
+    await websocket.send_json({
+        "event": "media",
+        "streamSid": stream_sid,
+        "media": {
+            "payload": base64.b64encode(response_text.encode()).decode()
+        }
+    })
+
+async def generate_response(transcript: str, intent: str, context: dict) -> str:
+    """Generate appropriate response based on intent and context"""
+    if context.get("total_turns") > MAX_TOTAL_TURNS:
+        return "I notice this has been a long conversation. To ensure quality service, let me connect you with a human agent who can provide more comprehensive assistance."
+        
+    if context.get("current_question") == "Do you need help with anything else?" and intent == "END_CALL":
+        return "Thank you for calling Kayako Help Center. Have a great day!"
+        
+    if intent in ["OFF_TOPIC", "UNCLEAR"]:
+        context["invalid_attempts"] = context.get("invalid_attempts", 0) + 1
+        if context["invalid_attempts"] >= MAX_INVALID_ATTEMPTS:
+            return "I apologize, but I'm having trouble understanding your needs. Let me connect you with a human agent who can better assist you."
+        return "I can only assist with questions related to Kayako and its services. Please ask a Kayako-related question." if intent == "OFF_TOPIC" else "I'm not sure I understood. Could you please rephrase your question about Kayako?"
+    
+    # For valid queries, get knowledge and generate response
+    context["invalid_attempts"] = 0
+    context["last_query"] = transcript
+    
+    knowledge = await response_cache.get_knowledge(transcript)
+    response = await format_response(knowledge, transcript)
+    
+    # Update current question
+    context["current_question"] = "Do you need help with anything else?"
+    if "connect you with a human" in knowledge:
+        context["current_question"] = "Would you like me to connect you with a human support agent?"
+        
+    return response
 
 def retrieve_data(query: str) -> str:
     # Get relevant information from our knowledge base

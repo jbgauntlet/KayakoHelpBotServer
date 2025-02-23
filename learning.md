@@ -157,6 +157,24 @@ Converting speech to text involves multiple steps:
   - Handles multiple languages
   - Provides real-time transcription
 
+### TwiML Call Flow Management
+Understanding how TwiML manages long-running calls:
+- Pause and Redirect Pattern
+  - `<Pause length="120"/>` acts as a heartbeat timer
+  - Not a call duration limit
+  - Followed by `<Redirect>` to create infinite loop
+  - Keeps call active without interruption
+- State Persistence
+  - WebSocket connection remains active across redirects
+  - Conversation state maintained in memory
+  - Media streaming continues uninterrupted
+  - Bot responses and processing not affected
+- Benefits
+  - Prevents call timeout
+  - Maintains continuous conversation
+  - Ensures reliable long-running calls
+  - No impact on user experience
+
 ### 3. API Integrations
 - Twilio Voice API for call handling
 - OpenAI APIs:
