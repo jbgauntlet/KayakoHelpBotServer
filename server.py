@@ -289,7 +289,13 @@ async def initialize_session(openai_ws):
     session_update = {
         "type": "session.update",
         "session": {
-            "turn_detection": {"type": "server_vad"},
+            "turn_detection": {
+                "type": "server_vad",
+                # "mode": "quality",  # Use quality mode for better noise filtering
+                "threshold": 0.7,   # Higher threshold means less sensitive to background noise (default is 0.5)
+                # "min_speech_duration_ms": 200,  # Minimum duration to consider something as speech
+                # "min_silence_duration_ms": 400  # Minimum silence duration before considering speech ended
+            },
             "input_audio_format": "g711_ulaw",
             "output_audio_format": "g711_ulaw",
             "input_audio_transcription": {
