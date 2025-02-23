@@ -1,4 +1,4 @@
-from typing import List, Dict
+from typing import List, Dict, Optional
 import json
 from pathlib import Path
 import html2text
@@ -6,155 +6,125 @@ from openai import OpenAI
 import numpy as np
 import logging
 import re
+import os
 
 logger = logging.getLogger(__name__)
 
 class RAGRetriever:
-    def __init__(self, openai_client: OpenAI, chunk_size: int = 500, chunk_overlap: int = 50):
-        # Initialize with configurable chunk parameters
-        self.openai_client = openai_client
-        self.chunk_size = chunk_size
-        self.chunk_overlap = chunk_overlap
-        self.articles = []
-        self.chunks = []  # Store chunks instead of full embeddings
+    def __init__(self, openai_client: OpenAI):
+        self.client = openai_client
+        self.model = "text-embedding-3-small"
+        self.chunks = []
+        self.embeddings = None
         
-    def load_articles(self, json_files: List[str]):
-        """Load and process articles from JSON files"""
-        for file in json_files:
-            with open(file) as f:
-                data = json.load(f)
-                self.articles.extend(data['articles'])
+    def load_articles(self, file_paths: List[str], embeddings_file: Optional[str] = None):
+        """Load articles and their embeddings"""
+        if embeddings_file and os.path.exists(embeddings_file):
+            self._load_precomputed_embeddings(embeddings_file)
+            logger.info("Loaded pre-computed embeddings")
+            return
+            
+        # Fall back to processing articles and computing embeddings if no pre-computed file
+        articles = []
+        for file_path in file_paths:
+            try:
+                with open(file_path, 'r') as f:
+                    data = json.load(f)
+                    articles.extend(data if isinstance(data, list) else [data])
+            except Exception as e:
+                logger.error(f"Error loading {file_path}: {e}")
                 
-    def _clean_text(self, text: str) -> str:
-        # Clean text by removing special characters and extra whitespace
-        text = text.replace("#", "").replace("*", "")
-        text = re.sub(r'\s+', ' ', text)  # Replace multiple spaces with single space
-        text = text.strip()
-        return text
-    
-    def _split_into_chunks(self, text: str, title: str) -> List[Dict]:
-        # Split text into overlapping chunks while preserving sentence boundaries
+        self.process_articles(articles)
+        
+    def _load_precomputed_embeddings(self, file_path: str):
+        """Load pre-computed embeddings from file"""
+        try:
+            data = np.load(file_path, allow_pickle=True)
+            self.embeddings = data['embeddings']
+            self.chunks = json.loads(str(data['chunks']))
+            logger.info(f"Loaded {len(self.chunks)} chunks with embeddings")
+        except Exception as e:
+            logger.error(f"Error loading pre-computed embeddings: {e}")
+            raise
+            
+    def process_articles(self, articles: List[Dict]):
+        """Process articles and generate embeddings (only used if no pre-computed embeddings)"""
+        self.chunks = []
+        embeddings_list = []
+        
+        for article in articles:
+            title = article.get("title", "Untitled")
+            content = article.get("content", "")
+            
+            # Split into chunks
+            chunks = self._chunk_text(content, title)
+            
+            # Generate embeddings for each chunk
+            for chunk in chunks:
+                embedding = self._generate_embedding(chunk["text"])
+                if embedding:
+                    self.chunks.append(chunk)
+                    embeddings_list.append(embedding)
+                    
+        self.embeddings = np.array(embeddings_list)
+        
+    def _chunk_text(self, text: str, title: str, chunk_size: int = 500, overlap: int = 50) -> List[Dict]:
+        """Split text into overlapping chunks"""
+        words = text.split()
         chunks = []
         
-        # Clean the text first
-        text = self._clean_text(text)
-        
-        # Split into sentences (basic implementation - can be improved with nltk)
-        sentences = re.split(r'(?<=[.!?])\s+', text)
-        
-        current_chunk = ""
-        current_size = 0
-        
-        for sentence in sentences:
-            sentence_len = len(sentence)
-            
-            # If single sentence is longer than chunk_size, split it
-            if sentence_len > self.chunk_size:
-                if current_chunk:
-                    chunks.append({
-                        "title": title,
-                        "text": current_chunk.strip(),
-                        "embedding": None
-                    })
-                
-                # Split long sentence into smaller pieces
-                words = sentence.split()
-                current_chunk = ""
-                current_size = 0
-                
-                for word in words:
-                    if current_size + len(word) + 1 > self.chunk_size:
-                        chunks.append({
-                            "title": title,
-                            "text": current_chunk.strip(),
-                            "embedding": None
-                        })
-                        current_chunk = word + " "
-                        current_size = len(word) + 1
-                    else:
-                        current_chunk += word + " "
-                        current_size += len(word) + 1
-                        
-            # Normal case: add sentence to current chunk or start new chunk
-            elif current_size + sentence_len + 1 > self.chunk_size:
-                chunks.append({
-                    "title": title,
-                    "text": current_chunk.strip(),
-                    "embedding": None
-                })
-                current_chunk = sentence + " "
-                current_size = sentence_len + 1
-            else:
-                current_chunk += sentence + " "
-                current_size += sentence_len + 1
-        
-        # Add the last chunk if it exists
-        if current_chunk:
+        for i in range(0, len(words), chunk_size - overlap):
+            chunk = " ".join(words[i:i + chunk_size])
             chunks.append({
+                "text": chunk,
                 "title": title,
-                "text": current_chunk.strip(),
-                "embedding": None
+                "start_idx": i
             })
             
         return chunks
         
-    def process_articles(self):
-        """Convert HTML to text and create embeddings for chunks"""
-        h = html2text.HTML2Text()
-        h.ignore_links = True
-        
-        # Process each article into chunks
-        for article in self.articles:
-            # Convert HTML to plain text
-            text = h.handle(article['body'])
-            
-            # Split article into chunks
-            article_chunks = self._split_into_chunks(text, article['title'])
-            
-            # Create embeddings for each chunk
-            for chunk in article_chunks:
-                try:
-                    embedding = self.openai_client.embeddings.create(
-                        model="text-embedding-3-small",
-                        input=chunk["text"]
-                    )
-                    chunk["embedding"] = embedding.data[0].embedding
-                    self.chunks.append(chunk)
-                    logger.debug(f"Created embedding for chunk of size {len(chunk['text'])} from article: {chunk['title']}")
-                except Exception as e:
-                    logger.error(f"Error creating embedding for chunk: {e}")
+    def _generate_embedding(self, text: str) -> Optional[List[float]]:
+        """Generate embedding for a piece of text"""
+        try:
+            response = self.client.embeddings.create(
+                model=self.model,
+                input=text,
+                encoding_format="float"
+            )
+            return response.data[0].embedding
+        except Exception as e:
+            logger.error(f"Error generating embedding: {e}")
+            return None
             
     def retrieve(self, query: str, top_k: int = 3) -> List[Dict]:
-        # Retrieve most relevant chunks for a query
-        query_embedding = self.openai_client.embeddings.create(
-            model="text-embedding-3-small",
-            input=query
-        ).data[0].embedding
-        
-        # Calculate similarities with all chunks
-        similarities = []
-        for chunk in self.chunks:
-            similarity = np.dot(query_embedding, chunk['embedding'])
-            similarities.append((similarity, chunk))
-            logger.debug(f"Chunk similarity: {similarity}, Title: {chunk['title']}, Preview: {chunk['text'][:100]}...")
+        """Find most relevant chunks for a query"""
+        # Generate embedding for query
+        query_embedding = self._generate_embedding(query)
+        if not query_embedding:
+            return []
             
-        # Sort by similarity and get top results
-        similarities.sort(reverse=True)
+        # Calculate similarities
+        similarities = np.dot(self.embeddings, query_embedding)
         
-        # Deduplicate chunks from the same title while maintaining order
+        # Get top-k chunks
+        top_indices = np.argsort(similarities)[-top_k:][::-1]
+        
+        results = []
         seen_titles = set()
-        unique_results = []
         
-        for similarity, chunk in similarities:
-            if len(unique_results) >= top_k:
-                break
+        for idx in top_indices:
+            chunk = self.chunks[idx]
+            title = chunk["title"]
+            
+            # Skip if we already have a chunk from this article
+            if title in seen_titles:
+                continue
                 
-            if chunk['title'] not in seen_titles:
-                seen_titles.add(chunk['title'])
-                unique_results.append({
-                    'title': chunk['title'],
-                    'text': chunk['text'],
-                    'similarity': similarity
-                })
-        
-        return unique_results 
+            seen_titles.add(title)
+            results.append({
+                "text": chunk["text"],
+                "title": title,
+                "similarity": float(similarities[idx])
+            })
+            
+        return results 

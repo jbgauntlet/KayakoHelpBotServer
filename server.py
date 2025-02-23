@@ -52,8 +52,7 @@ openai_client = OpenAI(api_key=OPENAI_API_KEY)         # For AI capabilities
 
 # Set up our knowledge base system (RAG) with help articles
 rag = RAGRetriever(openai_client)
-rag.load_articles(['sample-help.json', 'sample-help-2.json'])
-rag.process_articles()
+rag.load_articles(['sample-help.json', 'sample-help-2.json'], embeddings_file='help_embeddings.npz')
 
 # Dictionary to store conversation information for each active call
 conversation_context: Dict[str, Dict] = {}
@@ -576,7 +575,9 @@ async def handle_call():
 
 @app.websocket("/media")
 async def media_stream(websocket: WebSocket):
+    logger.info("New WebSocket connection attempt")
     await websocket.accept()
+    logger.info("WebSocket connection accepted")
     call_sid = None
     heartbeat_task = None
     stream_sid = None
@@ -586,6 +587,7 @@ async def media_stream(websocket: WebSocket):
             while True:
                 await asyncio.sleep(30)  # Send heartbeat every 30 seconds
                 await websocket.send_json({"event": "heartbeat"})
+                logger.debug("Heartbeat sent")
         except websockets.exceptions.ConnectionClosed:
             logger.info("WebSocket closed during heartbeat")
         except Exception as e:
@@ -593,16 +595,20 @@ async def media_stream(websocket: WebSocket):
     
     try:
         # Wait for the initial connected message from Twilio
+        logger.info("Waiting for initial connected message")
         data = await websocket.receive_text()
         msg = json.loads(data)
         if msg.get("event") != "connected":
+            logger.error(f"Expected 'connected' event, got: {msg.get('event')}")
             raise ValueError("Expected 'connected' event")
         logger.info("Received connected event")
         
         # Wait for the start message which contains call metadata
+        logger.info("Waiting for start message")
         data = await websocket.receive_text()
         msg = json.loads(data)
         if msg.get("event") != "start":
+            logger.error(f"Expected 'start' event, got: {msg.get('event')}")
             raise ValueError("Expected 'start' event")
             
         # Extract important metadata
@@ -610,6 +616,7 @@ async def media_stream(websocket: WebSocket):
         call_sid = start_data.get("callSid")
         stream_sid = start_data.get("streamSid")
         if not call_sid or not stream_sid:
+            logger.error(f"Missing metadata - callSid: {call_sid}, streamSid: {stream_sid}")
             raise ValueError("Missing callSid or streamSid")
         
         logger.info(f"Started streaming session for call {call_sid}")
@@ -622,16 +629,24 @@ async def media_stream(websocket: WebSocket):
             "silence_attempts": 0,
             "total_turns": 0
         }
+        logger.info("Conversation context initialized")
         
         # Send initial greeting
+        logger.info("Sending initial greeting")
         greeting = "Thank you for calling the Kayako Help Center today. How may I assist you?"
-        await websocket.send_json({
+        greeting_payload = {
             "event": "media",
             "streamSid": stream_sid,
             "media": {
-                "payload": base64.b64encode(greeting.encode()).decode()
+                "payload": base64.b64encode(greeting.encode('utf-8')).decode('utf-8'),
+                "contentType": "text/plain",
+                "encoding": "base64"
             }
-        })
+        }
+        logger.info(f"Greeting payload prepared: {greeting_payload}")
+        await websocket.send_json(greeting_payload)
+        logger.info("Initial greeting sent")
+        
         # Send mark to track when greeting is done
         await websocket.send_json({
             "event": "mark",
@@ -640,14 +655,18 @@ async def media_stream(websocket: WebSocket):
                 "name": "greeting_complete"
             }
         })
+        logger.info("Greeting mark sent")
         
         # Start heartbeat task
         heartbeat_task = asyncio.create_task(send_heartbeat())
+        logger.info("Heartbeat task started")
         
         while True:
             try:
+                logger.debug("Waiting for next message")
                 data = await websocket.receive_text()
                 msg = json.loads(data)
+                logger.debug(f"Received message type: {msg.get('event')}")
                 
                 if msg["event"] == "media":
                     if not call_sid:
@@ -656,7 +675,9 @@ async def media_stream(websocket: WebSocket):
                     
                     # Process audio chunk
                     chunk = base64.b64decode(msg["media"]["payload"])
+                    logger.debug(f"Processing audio chunk of size: {len(chunk)}")
                     if transcript := await streaming_processor.process_chunk(call_sid, chunk, websocket):
+                        logger.info(f"Processed transcript: {transcript}")
                         # Get conversation context
                         context = conversation_context.get(call_sid)
                         if not context:
@@ -685,6 +706,7 @@ async def media_stream(websocket: WebSocket):
                 
             except asyncio.TimeoutError:
                 # Send ping to check connection
+                logger.warning("Message timeout, sending ping")
                 try:
                     await websocket.send_json({"event": "ping"})
                 except websockets.exceptions.ConnectionClosed:
@@ -692,31 +714,36 @@ async def media_stream(websocket: WebSocket):
                     break
                     
     except Exception as e:
-        logger.error(f"Error in media stream: {e}")
+        logger.error(f"Error in media stream: {e}", exc_info=True)
         try:
             await websocket.send_json({
                 "event": "error",
                 "message": str(e)
             })
         except websockets.exceptions.ConnectionClosed:
-            pass
+            logger.error("Could not send error message - connection closed")
     finally:
         # Clean up
+        logger.info("Starting cleanup")
         if call_sid and call_sid in streaming_processor.active_streams:
             await streaming_processor.handle_interrupt(call_sid)
+            logger.info("Handled stream interrupt")
         if call_sid:
             await streaming_processor.cleanup_old_buffers()
             conversation_context.pop(call_sid, None)
+            logger.info("Cleaned up conversation context and buffers")
         if heartbeat_task:
             heartbeat_task.cancel()
             try:
                 await heartbeat_task
+                logger.info("Heartbeat task cancelled")
             except asyncio.CancelledError:
                 pass
         try:
             await websocket.close()
+            logger.info("WebSocket connection closed")
         except websockets.exceptions.ConnectionClosed:
-            pass
+            logger.info("WebSocket was already closed")
 
 async def process_user_input(transcript: str, context: dict, stream_sid: str, websocket: WebSocket) -> None:
     """Process user input and send appropriate response"""
