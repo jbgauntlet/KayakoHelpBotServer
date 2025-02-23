@@ -1,0 +1,389 @@
+Waiting for logs...
+
+2025-02-23T04:04:10.971 proxy[781177ec2273d8] dfw [info] Starting machine
+
+2025-02-23T04:04:11.045 app[781177ec2273d8] dfw [info] 2025-02-23T04:04:11.045738403 [01JMRFHW9G0TVPZ6E5B173HR32:main] Running Firecracker v1.7.0
+
+2025-02-23T04:04:11.903 app[781177ec2273d8] dfw [info] INFO Starting init (commit: 67f51b8b)...
+
+2025-02-23T04:04:12.025 app[781177ec2273d8] dfw [info] INFO Preparing to run: `uvicorn server:app --host 0.0.0.0 --port 8080` as root
+
+2025-02-23T04:04:12.033 app[781177ec2273d8] dfw [info] INFO [fly api proxy] listening at /.fly/api
+
+2025-02-23T04:04:12.076 runner[781177ec2273d8] dfw [info] Machine started in 1.102s
+
+2025-02-23T04:04:12.078 proxy[781177ec2273d8] dfw [info] machine started in 1.106817885s
+
+2025-02-23T04:04:12.417 app[781177ec2273d8] dfw [info] 2025/02/23 04:04:12 INFO SSH listening listen_address=[fdaa:10:b880:a7b:163:c15:1e62:2]:22
+
+2025-02-23T04:04:13.687 app[781177ec2273d8] dfw [info] INFO:rag:Loaded 0 chunks with embeddings
+
+2025-02-23T04:04:13.687 app[781177ec2273d8] dfw [info] INFO:rag:Loaded pre-computed embeddings
+
+2025-02-23T04:04:13.729 app[781177ec2273d8] dfw [info] INFO: Started server process [629]
+
+2025-02-23T04:04:13.729 app[781177ec2273d8] dfw [info] INFO: Waiting for application startup.
+
+2025-02-23T04:04:13.729 app[781177ec2273d8] dfw [info] INFO:server:Starting cache prewarming...
+
+2025-02-23T04:04:13.729 app[781177ec2273d8] dfw [info] DEBUG:server:Cache miss for key: how do i set up single sign-on (sso) for admin use...
+
+2025-02-23T04:04:13.730 app[781177ec2273d8] dfw [info] DEBUG:openai._base_client:Request options: {'method': 'post', 'url': '/embeddings', 'files': None, 'post_parser': <function Embeddings.create.<locals>.parser at 0x7f34ac9d1120>, 'json_data': {'input': 'How do I set up Single Sign-On (SSO) for admin users?', 'model': 'text-embedding-3-small', 'encoding_format': 'float'}}
+
+2025-02-23T04:04:13.735 app[781177ec2273d8] dfw [info] DEBUG:openai._base_client:Sending HTTP Request: POST https://api.openai.com/v1/embeddings
+
+2025-02-23T04:04:13.736 app[781177ec2273d8] dfw [info] DEBUG:httpcore.connection:connect_tcp.started host='api.openai.com' port=443 local_address=None timeout=5.0 socket_options=None
+
+2025-02-23T04:04:13.759 app[781177ec2273d8] dfw [info] DEBUG:httpcore.connection:connect_tcp.complete return_value=<httpcore._backends.sync.SyncStream object at 0x7f34a61f4af0>
+
+2025-02-23T04:04:13.760 app[781177ec2273d8] dfw [info] DEBUG:httpcore.connection:start_tls.started ssl_context=<ssl.SSLContext object at 0x7f34a613c3c0> server_hostname='api.openai.com' timeout=5.0
+
+2025-02-23T04:04:13.771 app[781177ec2273d8] dfw [info] DEBUG:httpcore.connection:start_tls.complete return_value=<httpcore._backends.sync.SyncStream object at 0x7f34a61f4880>
+
+2025-02-23T04:04:13.771 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:send_request_headers.started request=<Request [b'POST']>
+
+2025-02-23T04:04:13.772 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:send_request_headers.complete
+
+2025-02-23T04:04:13.772 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:send_request_body.started request=<Request [b'POST']>
+
+2025-02-23T04:04:13.772 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:send_request_body.complete
+
+2025-02-23T04:04:13.772 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:receive_response_headers.started request=<Request [b'POST']>
+
+2025-02-23T04:04:15.186 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Sun, 23 Feb 2025 04:04:15 GMT'), (b'Content-Type', b'application/json'), (b'Transfer-Encoding', b'chunked'), (b'Connection', b'keep-alive'), (b'access-control-allow-origin', b'*'), (b'access-control-expose-headers', b'X-Request-ID'), (b'openai-model', b'text-embedding-3-small'), (b'openai-organization', b'bloomtech'), (b'openai-processing-ms', b'118'), (b'openai-version', b'2020-10-01'), (b'strict-transport-security', b'max-age=31536000; includeSubDomains; preload'), (b'via', b'envoy-router-db5fdd654-784m2'), (b'x-envoy-upstream-service-time', b'75'), (b'x-ratelimit-limit-requests', b'10000'), (b'x-ratelimit-limit-tokens', b'10000000'), (b'x-ratelimit-remaining-requests', b'9999'), (b'x-ratelimit-remaining-tokens', b'9999987'), (b'x-ratelimit-reset-requests', b'6ms'), (b'x-ratelimit-reset-tokens', b'0s'), (b'x-request-id', b'req_97fce533c7596aed9c2344300d290f45'), (b'CF-Cache-Status', b'DYNAMIC'), (b'Set-Cookie', b'__cf_bm=hjtsES62PQ1G2010yh5UWDgotMcFY47zMcmzPGB7wx0-1740283455-1.0.1.1-yvzy.SWKkarqaDty.Und1zhfTY8ohMBqzztGOetVZ.mS9G8wLUWDDBxyz1JEGVreT3SuyLIh6ZJrwNAxxikazg; path=/; expires=Sun, 23-Feb-25 04:34:15 GMT; domain=.api.openai.com; HttpOnly; Secure; SameSite=None'), (b'X-Content-Type-Options', b'nosniff'), (b'Set-Cookie', b'_cfuvid=6wett9XLTC69yLoW.5X1HYRsG955UkaQAH9r4extk_A-1740283455189-0.0.1.1-604800000; path=/; domain=.api.openai.com; HttpOnly; Secure; SameSite=None'), (b'Server', b'cloudflare'), (b'CF-RAY', b'916454a21a0ceaf2-DFW'), (b'Content-Encoding', b'gzip'), (b'alt-svc', b'h3=":443"; ma=86400')])
+
+2025-02-23T04:04:15.187 app[781177ec2273d8] dfw [info] INFO:httpx:HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 200 OK"
+
+2025-02-23T04:04:15.187 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:receive_response_body.started request=<Request [b'POST']>
+
+2025-02-23T04:04:15.221 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:receive_response_body.complete
+
+2025-02-23T04:04:15.221 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:response_closed.started
+
+2025-02-23T04:04:15.221 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:response_closed.complete
+
+2025-02-23T04:04:15.221 app[781177ec2273d8] dfw [info] DEBUG:openai._base_client:HTTP Response: POST https://api.openai.com/v1/embeddings "200 OK" Headers([('date', 'Sun, 23 Feb 2025 04:04:15 GMT'), ('content-type', 'application/json'), ('transfer-encoding', 'chunked'), ('connection', 'keep-alive'), ('access-control-allow-origin', '*'), ('access-control-expose-headers', 'X-Request-ID'), ('openai-model', 'text-embedding-3-small'), ('openai-organization', 'bloomtech'), ('openai-processing-ms', '118'), ('openai-version', '2020-10-01'), ('strict-transport-security', 'max-age=31536000; includeSubDomains; preload'), ('via', 'envoy-router-db5fdd654-784m2'), ('x-envoy-upstream-service-time', '75'), ('x-ratelimit-limit-requests', '10000'), ('x-ratelimit-limit-tokens', '10000000'), ('x-ratelimit-remaining-requests', '9999'), ('x-ratelimit-remaining-tokens', '9999987'), ('x-ratelimit-reset-requests', '6ms'), ('x-ratelimit-reset-tokens', '0s'), ('x-request-id', 'req_97fce533c7596aed9c2344300d290f45'), ('cf-cache-status', 'DYNAMIC'), ('set-cookie', '__cf_bm=hjtsES62PQ1G2010yh5UWDgotMcFY47zMcmzPGB7wx0-1740283455-1.0.1.1-yvzy.SWKkarqaDty.Und1zhfTY8ohMBqzztGOetVZ.mS9G8wLUWDDBxyz1JEGVreT3SuyLIh6ZJrwNAxxikazg; path=/; expires=Sun, 23-Feb-25 04:34:15 GMT; domain=.api.openai.com; HttpOnly; Secure; SameSite=None'), ('x-content-type-options', 'nosniff'), ('set-cookie', '_cfuvid=6wett9XLTC69yLoW.5X1HYRsG955UkaQAH9r4extk_A-1740283455189-0.0.1.1-604800000; path=/; domain=.api.openai.com; HttpOnly; Secure; SameSite=None'), ('server', 'cloudflare'), ('cf-ray', '916454a21a0ceaf2-DFW'), ('content-encoding', 'gzip'), ('alt-svc', 'h3=":443"; ma=86400')])
+
+2025-02-23T04:04:15.222 app[781177ec2273d8] dfw [info] DEBUG:openai._base_client:request_id: req_97fce533c7596aed9c2344300d290f45
+
+2025-02-23T04:04:15.236 app[781177ec2273d8] dfw [info] ERROR:server:Error prewarming cache for query 'How do I set up Single Sign-On (SSO) for admin users?': shapes (0,) and (1536,) not aligned: 0 (dim 0) != 1536 (dim 0)
+
+2025-02-23T04:04:15.236 app[781177ec2273d8] dfw [info] DEBUG:server:Cache miss for key: how do i manage administrator roles and permission...
+
+2025-02-23T04:04:15.237 app[781177ec2273d8] dfw [info] DEBUG:openai._base_client:Request options: {'method': 'post', 'url': '/embeddings', 'files': None, 'post_parser': <function Embeddings.create.<locals>.parser at 0x7f34ac9d1120>, 'json_data': {'input': 'How do I manage administrator roles and permissions?', 'model': 'text-embedding-3-small', 'encoding_format': 'float'}}
+
+2025-02-23T04:04:15.238 app[781177ec2273d8] dfw [info] DEBUG:openai._base_client:Sending HTTP Request: POST https://api.openai.com/v1/embeddings
+
+2025-02-23T04:04:15.238 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:send_request_headers.started request=<Request [b'POST']>
+
+2025-02-23T04:04:15.238 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:send_request_headers.complete
+
+2025-02-23T04:04:15.238 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:send_request_body.started request=<Request [b'POST']>
+
+2025-02-23T04:04:15.239 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:send_request_body.complete
+
+2025-02-23T04:04:15.239 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:receive_response_headers.started request=<Request [b'POST']>
+
+2025-02-23T04:04:15.665 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Sun, 23 Feb 2025 04:04:15 GMT'), (b'Content-Type', b'application/json'), (b'Transfer-Encoding', b'chunked'), (b'Connection', b'keep-alive'), (b'access-control-allow-origin', b'*'), (b'access-control-expose-headers', b'X-Request-ID'), (b'openai-model', b'text-embedding-3-small'), (b'openai-organization', b'bloomtech'), (b'openai-processing-ms', b'122'), (b'openai-version', b'2020-10-01'), (b'strict-transport-security', b'max-age=31536000; includeSubDomains; preload'), (b'via', b'envoy-router-744d65994f-m22s8'), (b'x-envoy-upstream-service-time', b'59'), (b'x-ratelimit-limit-requests', b'10000'), (b'x-ratelimit-limit-tokens', b'10000000'), (b'x-ratelimit-remaining-requests', b'9999'), (b'x-ratelimit-remaining-tokens', b'9999986'), (b'x-ratelimit-reset-requests', b'6ms'), (b'x-ratelimit-reset-tokens', b'0s'), (b'x-request-id', b'req_3d5e28f2aecb1bebcd2b48ebfa3098bc'), (b'cf-cache-status', b'DYNAMIC'), (b'X-Content-Type-Options', b'nosniff'), (b'Server', b'cloudflare'), (b'CF-RAY', b'916454ab4876eaf2-DFW'), (b'Content-Encoding', b'gzip'), (b'alt-svc', b'h3=":443"; ma=86400')])
+
+2025-02-23T04:04:15.665 app[781177ec2273d8] dfw [info] INFO:httpx:HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 200 OK"
+
+2025-02-23T04:04:15.665 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:receive_response_body.started request=<Request [b'POST']>
+
+2025-02-23T04:04:15.703 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:receive_response_body.complete
+
+2025-02-23T04:04:15.703 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:response_closed.started
+
+2025-02-23T04:04:15.703 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:response_closed.complete
+
+2025-02-23T04:04:15.703 app[781177ec2273d8] dfw [info] DEBUG:openai._base_client:HTTP Response: POST https://api.openai.com/v1/embeddings "200 OK" Headers({'date': 'Sun, 23 Feb 2025 04:04:15 GMT', 'content-type': 'application/json', 'transfer-encoding': 'chunked', 'connection': 'keep-alive', 'access-control-allow-origin': '*', 'access-control-expose-headers': 'X-Request-ID', 'openai-model': 'text-embedding-3-small', 'openai-organization': 'bloomtech', 'openai-processing-ms': '122', 'openai-version': '2020-10-01', 'strict-transport-security': 'max-age=31536000; includeSubDomains; preload', 'via': 'envoy-router-744d65994f-m22s8', 'x-envoy-upstream-service-time': '59', 'x-ratelimit-limit-requests': '10000', 'x-ratelimit-limit-tokens': '10000000', 'x-ratelimit-remaining-requests': '9999', 'x-ratelimit-remaining-tokens': '9999986', 'x-ratelimit-reset-requests': '6ms', 'x-ratelimit-reset-tokens': '0s', 'x-request-id': 'req_3d5e28f2aecb1bebcd2b48ebfa3098bc', 'cf-cache-status': 'DYNAMIC', 'x-content-type-options': 'nosniff', 'server': 'cloudflare', 'cf-ray': '916454ab4876eaf2-DFW', 'content-encoding': 'gzip', 'alt-svc': 'h3=":443"; ma=86400'})
+
+2025-02-23T04:04:15.704 app[781177ec2273d8] dfw [info] DEBUG:openai._base_client:request_id: req_3d5e28f2aecb1bebcd2b48ebfa3098bc
+
+2025-02-23T04:04:15.714 app[781177ec2273d8] dfw [info] ERROR:server:Error prewarming cache for query 'How do I manage administrator roles and permissions?': shapes (0,) and (1536,) not aligned: 0 (dim 0) != 1536 (dim 0)
+
+2025-02-23T04:04:15.714 app[781177ec2273d8] dfw [info] DEBUG:server:Cache miss for key: how do i customize the branding of my advocatehub?...
+
+2025-02-23T04:04:15.715 app[781177ec2273d8] dfw [info] DEBUG:openai._base_client:Request options: {'method': 'post', 'url': '/embeddings', 'files': None, 'post_parser': <function Embeddings.create.<locals>.parser at 0x7f34ac9d1120>, 'json_data': {'input': 'How do I customize the branding of my AdvocateHub?', 'model': 'text-embedding-3-small', 'encoding_format': 'float'}}
+
+2025-02-23T04:04:15.715 app[781177ec2273d8] dfw [info] DEBUG:openai._base_client:Sending HTTP Request: POST https://api.openai.com/v1/embeddings
+
+2025-02-23T04:04:15.716 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:send_request_headers.started request=<Request [b'POST']>
+
+2025-02-23T04:04:15.716 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:send_request_headers.complete
+
+2025-02-23T04:04:15.716 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:send_request_body.started request=<Request [b'POST']>
+
+2025-02-23T04:04:15.716 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:send_request_body.complete
+
+2025-02-23T04:04:15.716 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:receive_response_headers.started request=<Request [b'POST']>
+
+2025-02-23T04:04:16.520 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Sun, 23 Feb 2025 04:04:16 GMT'), (b'Content-Type', b'application/json'), (b'Transfer-Encoding', b'chunked'), (b'Connection', b'keep-alive'), (b'access-control-allow-origin', b'*'), (b'access-control-expose-headers', b'X-Request-ID'), (b'openai-model', b'text-embedding-3-small'), (b'openai-organization', b'bloomtech'), (b'openai-processing-ms', b'441'), (b'openai-version', b'2020-10-01'), (b'strict-transport-security', b'max-age=31536000; includeSubDomains; preload'), (b'via', b'envoy-router-67cd665bdf-f4j6k'), (b'x-envoy-upstream-service-time', b'183'), (b'x-ratelimit-limit-requests', b'10000'), (b'x-ratelimit-limit-tokens', b'10000000'), (b'x-ratelimit-remaining-requests', b'9999'), (b'x-ratelimit-remaining-tokens', b'9999987'), (b'x-ratelimit-reset-requests', b'6ms'), (b'x-ratelimit-reset-tokens', b'0s'), (b'x-request-id', b'req_25574bf6e3df2286158148b41548a32a'), (b'cf-cache-status', b'DYNAMIC'), (b'X-Content-Type-Options', b'nosniff'), (b'Server', b'cloudflare'), (b'CF-RAY', b'916454ae4a60eaf2-DFW'), (b'Content-Encoding', b'gzip'), (b'alt-svc', b'h3=":443"; ma=86400')])
+
+2025-02-23T04:04:16.520 app[781177ec2273d8] dfw [info] INFO:httpx:HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 200 OK"
+
+2025-02-23T04:04:16.520 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:receive_response_body.started request=<Request [b'POST']>
+
+2025-02-23T04:04:16.569 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:receive_response_body.complete
+
+2025-02-23T04:04:16.569 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:response_closed.started
+
+2025-02-23T04:04:16.569 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:response_closed.complete
+
+2025-02-23T04:04:16.570 app[781177ec2273d8] dfw [info] DEBUG:openai._base_client:HTTP Response: POST https://api.openai.com/v1/embeddings "200 OK" Headers({'date': 'Sun, 23 Feb 2025 04:04:16 GMT', 'content-type': 'application/json', 'transfer-encoding': 'chunked', 'connection': 'keep-alive', 'access-control-allow-origin': '*', 'access-control-expose-headers': 'X-Request-ID', 'openai-model': 'text-embedding-3-small', 'openai-organization': 'bloomtech', 'openai-processing-ms': '441', 'openai-version': '2020-10-01', 'strict-transport-security': 'max-age=31536000; includeSubDomains; preload', 'via': 'envoy-router-67cd665bdf-f4j6k', 'x-envoy-upstream-service-time': '183', 'x-ratelimit-limit-requests': '10000', 'x-ratelimit-limit-tokens': '10000000', 'x-ratelimit-remaining-requests': '9999', 'x-ratelimit-remaining-tokens': '9999987', 'x-ratelimit-reset-requests': '6ms', 'x-ratelimit-reset-tokens': '0s', 'x-request-id': 'req_25574bf6e3df2286158148b41548a32a', 'cf-cache-status': 'DYNAMIC', 'x-content-type-options': 'nosniff', 'server': 'cloudflare', 'cf-ray': '916454ae4a60eaf2-DFW', 'content-encoding': 'gzip', 'alt-svc': 'h3=":443"; ma=86400'})
+
+2025-02-23T04:04:16.570 app[781177ec2273d8] dfw [info] DEBUG:openai._base_client:request_id: req_25574bf6e3df2286158148b41548a32a
+
+2025-02-23T04:04:16.585 app[781177ec2273d8] dfw [info] ERROR:server:Error prewarming cache for query 'How do I customize the branding of my AdvocateHub?': shapes (0,) and (1536,) not aligned: 0 (dim 0) != 1536 (dim 0)
+
+2025-02-23T04:04:16.585 app[781177ec2273d8] dfw [info] DEBUG:server:Cache miss for key: how do i add or upgrade users to administrator acc...
+
+2025-02-23T04:04:16.586 app[781177ec2273d8] dfw [info] DEBUG:openai._base_client:Request options: {'method': 'post', 'url': '/embeddings', 'files': None, 'post_parser': <function Embeddings.create.<locals>.parser at 0x7f34ac9d1120>, 'json_data': {'input': 'How do I add or upgrade users to administrator accounts?', 'model': 'text-embedding-3-small', 'encoding_format': 'float'}}
+
+2025-02-23T04:04:16.587 app[781177ec2273d8] dfw [info] DEBUG:openai._base_client:Sending HTTP Request: POST https://api.openai.com/v1/embeddings
+
+2025-02-23T04:04:16.588 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:send_request_headers.started request=<Request [b'POST']>
+
+2025-02-23T04:04:16.588 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:send_request_headers.complete
+
+2025-02-23T04:04:16.588 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:send_request_body.started request=<Request [b'POST']>
+
+2025-02-23T04:04:16.589 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:send_request_body.complete
+
+2025-02-23T04:04:16.589 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:receive_response_headers.started request=<Request [b'POST']>
+
+2025-02-23T04:04:17.149 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Sun, 23 Feb 2025 04:04:17 GMT'), (b'Content-Type', b'application/json'), (b'Transfer-Encoding', b'chunked'), (b'Connection', b'keep-alive'), (b'access-control-allow-origin', b'*'), (b'access-control-expose-headers', b'X-Request-ID'), (b'openai-model', b'text-embedding-3-small'), (b'openai-organization', b'bloomtech'), (b'openai-processing-ms', b'216'), (b'openai-version', b'2020-10-01'), (b'strict-transport-security', b'max-age=31536000; includeSubDomains; preload'), (b'via', b'envoy-router-6d95f559f4-nf4qj'), (b'x-envoy-upstream-service-time', b'167'), (b'x-ratelimit-limit-requests', b'10000'), (b'x-ratelimit-limit-tokens', b'10000000'), (b'x-ratelimit-remaining-requests', b'9999'), (b'x-ratelimit-remaining-tokens', b'9999986'), (b'x-ratelimit-reset-requests', b'6ms'), (b'x-ratelimit-reset-tokens', b'0s'), (b'x-request-id', b'req_1864b820d665a7f9b364d4d966074e82'), (b'cf-cache-status', b'DYNAMIC'), (b'X-Content-Type-Options', b'nosniff'), (b'Server', b'cloudflare'), (b'CF-RAY', b'916454b3be57eaf2-DFW'), (b'Content-Encoding', b'gzip'), (b'alt-svc', b'h3=":443"; ma=86400')])
+
+2025-02-23T04:04:17.149 app[781177ec2273d8] dfw [info] INFO:httpx:HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 200 OK"
+
+2025-02-23T04:04:17.149 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:receive_response_body.started request=<Request [b'POST']>
+
+2025-02-23T04:04:17.190 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:receive_response_body.complete
+
+2025-02-23T04:04:17.190 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:response_closed.started
+
+2025-02-23T04:04:17.190 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:response_closed.complete
+
+2025-02-23T04:04:17.190 app[781177ec2273d8] dfw [info] DEBUG:openai._base_client:HTTP Response: POST https://api.openai.com/v1/embeddings "200 OK" Headers({'date': 'Sun, 23 Feb 2025 04:04:17 GMT', 'content-type': 'application/json', 'transfer-encoding': 'chunked', 'connection': 'keep-alive', 'access-control-allow-origin': '*', 'access-control-expose-headers': 'X-Request-ID', 'openai-model': 'text-embedding-3-small', 'openai-organization': 'bloomtech', 'openai-processing-ms': '216', 'openai-version': '2020-10-01', 'strict-transport-security': 'max-age=31536000; includeSubDomains; preload', 'via': 'envoy-router-6d95f559f4-nf4qj', 'x-envoy-upstream-service-time': '167', 'x-ratelimit-limit-requests': '10000', 'x-ratelimit-limit-tokens': '10000000', 'x-ratelimit-remaining-requests': '9999', 'x-ratelimit-remaining-tokens': '9999986', 'x-ratelimit-reset-requests': '6ms', 'x-ratelimit-reset-tokens': '0s', 'x-request-id': 'req_1864b820d665a7f9b364d4d966074e82', 'cf-cache-status': 'DYNAMIC', 'x-content-type-options': 'nosniff', 'server': 'cloudflare', 'cf-ray': '916454b3be57eaf2-DFW', 'content-encoding': 'gzip', 'alt-svc': 'h3=":443"; ma=86400'})
+
+2025-02-23T04:04:17.190 app[781177ec2273d8] dfw [info] DEBUG:openai._base_client:request_id: req_1864b820d665a7f9b364d4d966074e82
+
+2025-02-23T04:04:17.205 app[781177ec2273d8] dfw [info] ERROR:server:Error prewarming cache for query 'How do I add or upgrade users to administrator accounts?': shapes (0,) and (1536,) not aligned: 0 (dim 0) != 1536 (dim 0)
+
+2025-02-23T04:04:17.205 app[781177ec2273d8] dfw [info] DEBUG:server:Cache miss for key: how do i customize the sign-in page?...
+
+2025-02-23T04:04:17.206 app[781177ec2273d8] dfw [info] DEBUG:openai._base_client:Request options: {'method': 'post', 'url': '/embeddings', 'files': None, 'post_parser': <function Embeddings.create.<locals>.parser at 0x7f34ac9d1120>, 'json_data': {'input': 'How do I customize the sign-in page?', 'model': 'text-embedding-3-small', 'encoding_format': 'float'}}
+
+2025-02-23T04:04:17.207 app[781177ec2273d8] dfw [info] DEBUG:openai._base_client:Sending HTTP Request: POST https://api.openai.com/v1/embeddings
+
+2025-02-23T04:04:17.207 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:send_request_headers.started request=<Request [b'POST']>
+
+2025-02-23T04:04:17.208 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:send_request_headers.complete
+
+2025-02-23T04:04:17.208 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:send_request_body.started request=<Request [b'POST']>
+
+2025-02-23T04:04:17.208 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:send_request_body.complete
+
+2025-02-23T04:04:17.208 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:receive_response_headers.started request=<Request [b'POST']>
+
+2025-02-23T04:04:17.438 proxy[781177ec2273d8] dfw [info] waiting for machine to be reachable on 0.0.0.0:8080 (waited 5.360649703s so far)
+
+2025-02-23T04:04:17.581 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Sun, 23 Feb 2025 04:04:17 GMT'), (b'Content-Type', b'application/json'), (b'Transfer-Encoding', b'chunked'), (b'Connection', b'keep-alive'), (b'access-control-allow-origin', b'*'), (b'access-control-expose-headers', b'X-Request-ID'), (b'openai-model', b'text-embedding-3-small'), (b'openai-organization', b'bloomtech'), (b'openai-processing-ms', b'90'), (b'openai-version', b'2020-10-01'), (b'strict-transport-security', b'max-age=31536000; includeSubDomains; preload'), (b'via', b'envoy-router-79d76879d7-s99kq'), (b'x-envoy-upstream-service-time', b'49'), (b'x-ratelimit-limit-requests', b'10000'), (b'x-ratelimit-limit-tokens', b'10000000'), (b'x-ratelimit-remaining-requests', b'9999'), (b'x-ratelimit-remaining-tokens', b'9999991'), (b'x-ratelimit-reset-requests', b'6ms'), (b'x-ratelimit-reset-tokens', b'0s'), (b'x-request-id', b'req_1e708db1b25e7f7a1f8a4205444abe75'), (b'cf-cache-status', b'DYNAMIC'), (b'X-Content-Type-Options', b'nosniff'), (b'Server', b'cloudflare'), (b'CF-RAY', b'916454b798dceaf2-DFW'), (b'Content-Encoding', b'gzip'), (b'alt-svc', b'h3=":443"; ma=86400')])
+
+2025-02-23T04:04:17.581 app[781177ec2273d8] dfw [info] INFO:httpx:HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 200 OK"
+
+2025-02-23T04:04:17.581 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:receive_response_body.started request=<Request [b'POST']>
+
+2025-02-23T04:04:17.622 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:receive_response_body.complete
+
+2025-02-23T04:04:17.622 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:response_closed.started
+
+2025-02-23T04:04:17.623 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:response_closed.complete
+
+2025-02-23T04:04:17.623 app[781177ec2273d8] dfw [info] DEBUG:openai._base_client:HTTP Response: POST https://api.openai.com/v1/embeddings "200 OK" Headers({'date': 'Sun, 23 Feb 2025 04:04:17 GMT', 'content-type': 'application/json', 'transfer-encoding': 'chunked', 'connection': 'keep-alive', 'access-control-allow-origin': '*', 'access-control-expose-headers': 'X-Request-ID', 'openai-model': 'text-embedding-3-small', 'openai-organization': 'bloomtech', 'openai-processing-ms': '90', 'openai-version': '2020-10-01', 'strict-transport-security': 'max-age=31536000; includeSubDomains; preload', 'via': 'envoy-router-79d76879d7-s99kq', 'x-envoy-upstream-service-time': '49', 'x-ratelimit-limit-requests': '10000', 'x-ratelimit-limit-tokens': '10000000', 'x-ratelimit-remaining-requests': '9999', 'x-ratelimit-remaining-tokens': '9999991', 'x-ratelimit-reset-requests': '6ms', 'x-ratelimit-reset-tokens': '0s', 'x-request-id': 'req_1e708db1b25e7f7a1f8a4205444abe75', 'cf-cache-status': 'DYNAMIC', 'x-content-type-options': 'nosniff', 'server': 'cloudflare', 'cf-ray': '916454b798dceaf2-DFW', 'content-encoding': 'gzip', 'alt-svc': 'h3=":443"; ma=86400'})
+
+2025-02-23T04:04:17.623 app[781177ec2273d8] dfw [info] DEBUG:openai._base_client:request_id: req_1e708db1b25e7f7a1f8a4205444abe75
+
+2025-02-23T04:04:17.636 app[781177ec2273d8] dfw [info] ERROR:server:Error prewarming cache for query 'How do I customize the sign-in page?': shapes (0,) and (1536,) not aligned: 0 (dim 0) != 1536 (dim 0)
+
+2025-02-23T04:04:17.637 app[781177ec2273d8] dfw [info] DEBUG:server:Cache miss for key: how do i change the name of my advocatehub?...
+
+2025-02-23T04:04:17.637 app[781177ec2273d8] dfw [info] DEBUG:openai._base_client:Request options: {'method': 'post', 'url': '/embeddings', 'files': None, 'post_parser': <function Embeddings.create.<locals>.parser at 0x7f34ac9d1120>, 'json_data': {'input': 'How do I change the name of my AdvocateHub?', 'model': 'text-embedding-3-small', 'encoding_format': 'float'}}
+
+2025-02-23T04:04:17.638 app[781177ec2273d8] dfw [info] DEBUG:openai._base_client:Sending HTTP Request: POST https://api.openai.com/v1/embeddings
+
+2025-02-23T04:04:17.639 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:send_request_headers.started request=<Request [b'POST']>
+
+2025-02-23T04:04:17.639 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:send_request_headers.complete
+
+2025-02-23T04:04:17.640 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:send_request_body.started request=<Request [b'POST']>
+
+2025-02-23T04:04:17.640 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:send_request_body.complete
+
+2025-02-23T04:04:17.640 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:receive_response_headers.started request=<Request [b'POST']>
+
+2025-02-23T04:04:17.830 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Sun, 23 Feb 2025 04:04:17 GMT'), (b'Content-Type', b'application/json'), (b'Transfer-Encoding', b'chunked'), (b'Connection', b'keep-alive'), (b'access-control-allow-origin', b'*'), (b'access-control-expose-headers', b'X-Request-ID'), (b'openai-model', b'text-embedding-3-small'), (b'openai-organization', b'bloomtech'), (b'openai-processing-ms', b'99'), (b'openai-version', b'2020-10-01'), (b'strict-transport-security', b'max-age=31536000; includeSubDomains; preload'), (b'via', b'envoy-router-79d76879d7-wl7vx'), (b'x-envoy-upstream-service-time', b'49'), (b'x-ratelimit-limit-requests', b'10000'), (b'x-ratelimit-limit-tokens', b'10000000'), (b'x-ratelimit-remaining-requests', b'9999'), (b'x-ratelimit-remaining-tokens', b'9999989'), (b'x-ratelimit-reset-requests', b'6ms'), (b'x-ratelimit-reset-tokens', b'0s'), (b'x-request-id', b'req_a58e83d7af1a1e1b0348a5816e5538e4'), (b'cf-cache-status', b'DYNAMIC'), (b'X-Content-Type-Options', b'nosniff'), (b'Server', b'cloudflare'), (b'CF-RAY', b'916454ba4abbeaf2-DFW'), (b'Content-Encoding', b'gzip'), (b'alt-svc', b'h3=":443"; ma=86400')])
+
+2025-02-23T04:04:17.831 app[781177ec2273d8] dfw [info] INFO:httpx:HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 200 OK"
+
+2025-02-23T04:04:17.831 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:receive_response_body.started request=<Request [b'POST']>
+
+2025-02-23T04:04:17.832 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:receive_response_body.complete
+
+2025-02-23T04:04:17.832 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:response_closed.started
+
+2025-02-23T04:04:17.833 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:response_closed.complete
+
+2025-02-23T04:04:17.833 app[781177ec2273d8] dfw [info] DEBUG:openai._base_client:HTTP Response: POST https://api.openai.com/v1/embeddings "200 OK" Headers({'date': 'Sun, 23 Feb 2025 04:04:17 GMT', 'content-type': 'application/json', 'transfer-encoding': 'chunked', 'connection': 'keep-alive', 'access-control-allow-origin': '*', 'access-control-expose-headers': 'X-Request-ID', 'openai-model': 'text-embedding-3-small', 'openai-organization': 'bloomtech', 'openai-processing-ms': '99', 'openai-version': '2020-10-01', 'strict-transport-security': 'max-age=31536000; includeSubDomains; preload', 'via': 'envoy-router-79d76879d7-wl7vx', 'x-envoy-upstream-service-time': '49', 'x-ratelimit-limit-requests': '10000', 'x-ratelimit-limit-tokens': '10000000', 'x-ratelimit-remaining-requests': '9999', 'x-ratelimit-remaining-tokens': '9999989', 'x-ratelimit-reset-requests': '6ms', 'x-ratelimit-reset-tokens': '0s', 'x-request-id': 'req_a58e83d7af1a1e1b0348a5816e5538e4', 'cf-cache-status': 'DYNAMIC', 'x-content-type-options': 'nosniff', 'server': 'cloudflare', 'cf-ray': '916454ba4abbeaf2-DFW', 'content-encoding': 'gzip', 'alt-svc': 'h3=":443"; ma=86400'})
+
+2025-02-23T04:04:17.833 app[781177ec2273d8] dfw [info] DEBUG:openai._base_client:request_id: req_a58e83d7af1a1e1b0348a5816e5538e4
+
+2025-02-23T04:04:17.843 app[781177ec2273d8] dfw [info] ERROR:server:Error prewarming cache for query 'How do I change the name of my AdvocateHub?': shapes (0,) and (1536,) not aligned: 0 (dim 0) != 1536 (dim 0)
+
+2025-02-23T04:04:17.844 app[781177ec2273d8] dfw [info] DEBUG:server:Cache miss for key: how do i edit administrator profiles?...
+
+2025-02-23T04:04:17.844 app[781177ec2273d8] dfw [info] DEBUG:openai._base_client:Request options: {'method': 'post', 'url': '/embeddings', 'files': None, 'post_parser': <function Embeddings.create.<locals>.parser at 0x7f34ac9d1120>, 'json_data': {'input': 'How do I edit administrator profiles?', 'model': 'text-embedding-3-small', 'encoding_format': 'float'}}
+
+2025-02-23T04:04:17.845 app[781177ec2273d8] dfw [info] DEBUG:openai._base_client:Sending HTTP Request: POST https://api.openai.com/v1/embeddings
+
+2025-02-23T04:04:17.846 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:send_request_headers.started request=<Request [b'POST']>
+
+2025-02-23T04:04:17.846 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:send_request_headers.complete
+
+2025-02-23T04:04:17.846 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:send_request_body.started request=<Request [b'POST']>
+
+2025-02-23T04:04:17.846 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:send_request_body.complete
+
+2025-02-23T04:04:17.846 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:receive_response_headers.started request=<Request [b'POST']>
+
+2025-02-23T04:04:18.344 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Sun, 23 Feb 2025 04:04:18 GMT'), (b'Content-Type', b'application/json'), (b'Transfer-Encoding', b'chunked'), (b'Connection', b'keep-alive'), (b'access-control-allow-origin', b'*'), (b'access-control-expose-headers', b'X-Request-ID'), (b'openai-model', b'text-embedding-3-small'), (b'openai-organization', b'bloomtech'), (b'openai-processing-ms', b'213'), (b'openai-version', b'2020-10-01'), (b'strict-transport-security', b'max-age=31536000; includeSubDomains; preload'), (b'via', b'envoy-router-8565445f6b-hxxrk'), (b'x-envoy-upstream-service-time', b'168'), (b'x-ratelimit-limit-requests', b'10000'), (b'x-ratelimit-limit-tokens', b'10000000'), (b'x-ratelimit-remaining-requests', b'9999'), (b'x-ratelimit-remaining-tokens', b'9999991'), (b'x-ratelimit-reset-requests', b'6ms'), (b'x-ratelimit-reset-tokens', b'0s'), (b'x-request-id', b'req_5f043c3e6fa56d264d31d0c4e6f9d19d'), (b'cf-cache-status', b'DYNAMIC'), (b'X-Content-Type-Options', b'nosniff'), (b'Server', b'cloudflare'), (b'CF-RAY', b'916454bb9bb2eaf2-DFW'), (b'Content-Encoding', b'gzip'), (b'alt-svc', b'h3=":443"; ma=86400')])
+
+2025-02-23T04:04:18.344 app[781177ec2273d8] dfw [info] INFO:httpx:HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 200 OK"
+
+2025-02-23T04:04:18.344 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:receive_response_body.started request=<Request [b'POST']>
+
+2025-02-23T04:04:18.378 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:receive_response_body.complete
+
+2025-02-23T04:04:18.379 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:response_closed.started
+
+2025-02-23T04:04:18.381 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:response_closed.complete
+
+2025-02-23T04:04:18.381 app[781177ec2273d8] dfw [info] DEBUG:openai._base_client:HTTP Response: POST https://api.openai.com/v1/embeddings "200 OK" Headers({'date': 'Sun, 23 Feb 2025 04:04:18 GMT', 'content-type': 'application/json', 'transfer-encoding': 'chunked', 'connection': 'keep-alive', 'access-control-allow-origin': '*', 'access-control-expose-headers': 'X-Request-ID', 'openai-model': 'text-embedding-3-small', 'openai-organization': 'bloomtech', 'openai-processing-ms': '213', 'openai-version': '2020-10-01', 'strict-transport-security': 'max-age=31536000; includeSubDomains; preload', 'via': 'envoy-router-8565445f6b-hxxrk', 'x-envoy-upstream-service-time': '168', 'x-ratelimit-limit-requests': '10000', 'x-ratelimit-limit-tokens': '10000000', 'x-ratelimit-remaining-requests': '9999', 'x-ratelimit-remaining-tokens': '9999991', 'x-ratelimit-reset-requests': '6ms', 'x-ratelimit-reset-tokens': '0s', 'x-request-id': 'req_5f043c3e6fa56d264d31d0c4e6f9d19d', 'cf-cache-status': 'DYNAMIC', 'x-content-type-options': 'nosniff', 'server': 'cloudflare', 'cf-ray': '916454bb9bb2eaf2-DFW', 'content-encoding': 'gzip', 'alt-svc': 'h3=":443"; ma=86400'})
+
+2025-02-23T04:04:18.381 app[781177ec2273d8] dfw [info] DEBUG:openai._base_client:request_id: req_5f043c3e6fa56d264d31d0c4e6f9d19d
+
+2025-02-23T04:04:18.397 app[781177ec2273d8] dfw [info] ERROR:server:Error prewarming cache for query 'How do I edit administrator profiles?': shapes (0,) and (1536,) not aligned: 0 (dim 0) != 1536 (dim 0)
+
+2025-02-23T04:04:18.397 app[781177ec2273d8] dfw [info] DEBUG:server:Cache miss for key: how do i contact the admin team?...
+
+2025-02-23T04:04:18.398 app[781177ec2273d8] dfw [info] DEBUG:openai._base_client:Request options: {'method': 'post', 'url': '/embeddings', 'files': None, 'post_parser': <function Embeddings.create.<locals>.parser at 0x7f34ac9d1120>, 'json_data': {'input': 'How do I contact the admin team?', 'model': 'text-embedding-3-small', 'encoding_format': 'float'}}
+
+2025-02-23T04:04:18.399 app[781177ec2273d8] dfw [info] DEBUG:openai._base_client:Sending HTTP Request: POST https://api.openai.com/v1/embeddings
+
+2025-02-23T04:04:18.399 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:send_request_headers.started request=<Request [b'POST']>
+
+2025-02-23T04:04:18.400 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:send_request_headers.complete
+
+2025-02-23T04:04:18.400 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:send_request_body.started request=<Request [b'POST']>
+
+2025-02-23T04:04:18.400 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:send_request_body.complete
+
+2025-02-23T04:04:18.400 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:receive_response_headers.started request=<Request [b'POST']>
+
+2025-02-23T04:04:18.800 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Sun, 23 Feb 2025 04:04:18 GMT'), (b'Content-Type', b'application/json'), (b'Transfer-Encoding', b'chunked'), (b'Connection', b'keep-alive'), (b'access-control-allow-origin', b'*'), (b'access-control-expose-headers', b'X-Request-ID'), (b'openai-model', b'text-embedding-3-small'), (b'openai-organization', b'bloomtech'), (b'openai-processing-ms', b'64'), (b'openai-version', b'2020-10-01'), (b'strict-transport-security', b'max-age=31536000; includeSubDomains; preload'), (b'via', b'envoy-router-7444b66775-9pklq'), (b'x-envoy-upstream-service-time', b'30'), (b'x-ratelimit-limit-requests', b'10000'), (b'x-ratelimit-limit-tokens', b'10000000'), (b'x-ratelimit-remaining-requests', b'9999'), (b'x-ratelimit-remaining-tokens', b'9999992'), (b'x-ratelimit-reset-requests', b'6ms'), (b'x-ratelimit-reset-tokens', b'0s'), (b'x-request-id', b'req_37727590e0902d7402e8aedfc2ca11e8'), (b'cf-cache-status', b'DYNAMIC'), (b'X-Content-Type-Options', b'nosniff'), (b'Server', b'cloudflare'), (b'CF-RAY', b'916454bf0eadeaf2-DFW'), (b'Content-Encoding', b'gzip'), (b'alt-svc', b'h3=":443"; ma=86400')])
+
+2025-02-23T04:04:18.800 app[781177ec2273d8] dfw [info] INFO:httpx:HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 200 OK"
+
+2025-02-23T04:04:18.800 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:receive_response_body.started request=<Request [b'POST']>
+
+2025-02-23T04:04:18.841 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:receive_response_body.complete
+
+2025-02-23T04:04:18.841 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:response_closed.started
+
+2025-02-23T04:04:18.842 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:response_closed.complete
+
+2025-02-23T04:04:18.842 app[781177ec2273d8] dfw [info] DEBUG:openai._base_client:HTTP Response: POST https://api.openai.com/v1/embeddings "200 OK" Headers({'date': 'Sun, 23 Feb 2025 04:04:18 GMT', 'content-type': 'application/json', 'transfer-encoding': 'chunked', 'connection': 'keep-alive', 'access-control-allow-origin': '*', 'access-control-expose-headers': 'X-Request-ID', 'openai-model': 'text-embedding-3-small', 'openai-organization': 'bloomtech', 'openai-processing-ms': '64', 'openai-version': '2020-10-01', 'strict-transport-security': 'max-age=31536000; includeSubDomains; preload', 'via': 'envoy-router-7444b66775-9pklq', 'x-envoy-upstream-service-time': '30', 'x-ratelimit-limit-requests': '10000', 'x-ratelimit-limit-tokens': '10000000', 'x-ratelimit-remaining-requests': '9999', 'x-ratelimit-remaining-tokens': '9999992', 'x-ratelimit-reset-requests': '6ms', 'x-ratelimit-reset-tokens': '0s', 'x-request-id': 'req_37727590e0902d7402e8aedfc2ca11e8', 'cf-cache-status': 'DYNAMIC', 'x-content-type-options': 'nosniff', 'server': 'cloudflare', 'cf-ray': '916454bf0eadeaf2-DFW', 'content-encoding': 'gzip', 'alt-svc': 'h3=":443"; ma=86400'})
+
+2025-02-23T04:04:18.842 app[781177ec2273d8] dfw [info] DEBUG:openai._base_client:request_id: req_37727590e0902d7402e8aedfc2ca11e8
+
+2025-02-23T04:04:18.854 app[781177ec2273d8] dfw [info] ERROR:server:Error prewarming cache for query 'How do I contact the admin team?': shapes (0,) and (1536,) not aligned: 0 (dim 0) != 1536 (dim 0)
+
+2025-02-23T04:04:18.854 app[781177ec2273d8] dfw [info] DEBUG:server:Cache miss for key: how do i switch between administrator and advocate...
+
+2025-02-23T04:04:18.855 app[781177ec2273d8] dfw [info] DEBUG:openai._base_client:Request options: {'method': 'post', 'url': '/embeddings', 'files': None, 'post_parser': <function Embeddings.create.<locals>.parser at 0x7f34ac9d1120>, 'json_data': {'input': 'How do I switch between administrator and advocate accounts?', 'model': 'text-embedding-3-small', 'encoding_format': 'float'}}
+
+2025-02-23T04:04:18.856 app[781177ec2273d8] dfw [info] DEBUG:openai._base_client:Sending HTTP Request: POST https://api.openai.com/v1/embeddings
+
+2025-02-23T04:04:18.856 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:send_request_headers.started request=<Request [b'POST']>
+
+2025-02-23T04:04:18.857 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:send_request_headers.complete
+
+2025-02-23T04:04:18.857 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:send_request_body.started request=<Request [b'POST']>
+
+2025-02-23T04:04:18.857 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:send_request_body.complete
+
+2025-02-23T04:04:18.857 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:receive_response_headers.started request=<Request [b'POST']>
+
+2025-02-23T04:04:19.237 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Sun, 23 Feb 2025 04:04:19 GMT'), (b'Content-Type', b'application/json'), (b'Transfer-Encoding', b'chunked'), (b'Connection', b'keep-alive'), (b'access-control-allow-origin', b'*'), (b'access-control-expose-headers', b'X-Request-ID'), (b'openai-model', b'text-embedding-3-small'), (b'openai-organization', b'bloomtech'), (b'openai-processing-ms', b'67'), (b'openai-version', b'2020-10-01'), (b'strict-transport-security', b'max-age=31536000; includeSubDomains; preload'), (b'via', b'envoy-router-d9f6bbb6b-fnz2w'), (b'x-envoy-upstream-service-time', b'36'), (b'x-ratelimit-limit-requests', b'10000'), (b'x-ratelimit-limit-tokens', b'10000000'), (b'x-ratelimit-remaining-requests', b'9999'), (b'x-ratelimit-remaining-tokens', b'9999984'), (b'x-ratelimit-reset-requests', b'6ms'), (b'x-ratelimit-reset-tokens', b'0s'), (b'x-request-id', b'req_6c93e9703752f76fa9a2b974f9c44313'), (b'cf-cache-status', b'DYNAMIC'), (b'X-Content-Type-Options', b'nosniff'), (b'Server', b'cloudflare'), (b'CF-RAY', b'916454c1e8dceaf2-DFW'), (b'Content-Encoding', b'gzip'), (b'alt-svc', b'h3=":443"; ma=86400')])
+
+2025-02-23T04:04:19.238 app[781177ec2273d8] dfw [info] INFO:httpx:HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 200 OK"
+
+2025-02-23T04:04:19.238 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:receive_response_body.started request=<Request [b'POST']>
+
+2025-02-23T04:04:19.278 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:receive_response_body.complete
+
+2025-02-23T04:04:19.278 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:response_closed.started
+
+2025-02-23T04:04:19.278 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:response_closed.complete
+
+2025-02-23T04:04:19.278 app[781177ec2273d8] dfw [info] DEBUG:openai._base_client:HTTP Response: POST https://api.openai.com/v1/embeddings "200 OK" Headers({'date': 'Sun, 23 Feb 2025 04:04:19 GMT', 'content-type': 'application/json', 'transfer-encoding': 'chunked', 'connection': 'keep-alive', 'access-control-allow-origin': '*', 'access-control-expose-headers': 'X-Request-ID', 'openai-model': 'text-embedding-3-small', 'openai-organization': 'bloomtech', 'openai-processing-ms': '67', 'openai-version': '2020-10-01', 'strict-transport-security': 'max-age=31536000; includeSubDomains; preload', 'via': 'envoy-router-d9f6bbb6b-fnz2w', 'x-envoy-upstream-service-time': '36', 'x-ratelimit-limit-requests': '10000', 'x-ratelimit-limit-tokens': '10000000', 'x-ratelimit-remaining-requests': '9999', 'x-ratelimit-remaining-tokens': '9999984', 'x-ratelimit-reset-requests': '6ms', 'x-ratelimit-reset-tokens': '0s', 'x-request-id': 'req_6c93e9703752f76fa9a2b974f9c44313', 'cf-cache-status': 'DYNAMIC', 'x-content-type-options': 'nosniff', 'server': 'cloudflare', 'cf-ray': '916454c1e8dceaf2-DFW', 'content-encoding': 'gzip', 'alt-svc': 'h3=":443"; ma=86400'})
+
+2025-02-23T04:04:19.278 app[781177ec2273d8] dfw [info] DEBUG:openai._base_client:request_id: req_6c93e9703752f76fa9a2b974f9c44313
+
+2025-02-23T04:04:19.290 app[781177ec2273d8] dfw [info] ERROR:server:Error prewarming cache for query 'How do I switch between administrator and advocate accounts?': shapes (0,) and (1536,) not aligned: 0 (dim 0) != 1536 (dim 0)
+
+2025-02-23T04:04:19.290 app[781177ec2273d8] dfw [info] DEBUG:server:Cache miss for key: how do i customize the css and styling of my hub?...
+
+2025-02-23T04:04:19.290 app[781177ec2273d8] dfw [info] DEBUG:openai._base_client:Request options: {'method': 'post', 'url': '/embeddings', 'files': None, 'post_parser': <function Embeddings.create.<locals>.parser at 0x7f34ac9d1120>, 'json_data': {'input': 'How do I customize the CSS and styling of my hub?', 'model': 'text-embedding-3-small', 'encoding_format': 'float'}}
+
+2025-02-23T04:04:19.291 app[781177ec2273d8] dfw [info] DEBUG:openai._base_client:Sending HTTP Request: POST https://api.openai.com/v1/embeddings
+
+2025-02-23T04:04:19.292 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:send_request_headers.started request=<Request [b'POST']>
+
+2025-02-23T04:04:19.292 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:send_request_headers.complete
+
+2025-02-23T04:04:19.292 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:send_request_body.started request=<Request [b'POST']>
+
+2025-02-23T04:04:19.293 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:send_request_body.complete
+
+2025-02-23T04:04:19.293 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:receive_response_headers.started request=<Request [b'POST']>
+
+2025-02-23T04:04:19.629 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Sun, 23 Feb 2025 04:04:19 GMT'), (b'Content-Type', b'application/json'), (b'Transfer-Encoding', b'chunked'), (b'Connection', b'keep-alive'), (b'access-control-allow-origin', b'*'), (b'access-control-expose-headers', b'X-Request-ID'), (b'openai-model', b'text-embedding-3-small'), (b'openai-organization', b'bloomtech'), (b'openai-processing-ms', b'42'), (b'openai-version', b'2020-10-01'), (b'strict-transport-security', b'max-age=31536000; includeSubDomains; preload'), (b'via', b'envoy-router-76844b95c6-f4h8q'), (b'x-envoy-upstream-service-time', b'30'), (b'x-ratelimit-limit-requests', b'10000'), (b'x-ratelimit-limit-tokens', b'10000000'), (b'x-ratelimit-remaining-requests', b'9999'), (b'x-ratelimit-remaining-tokens', b'9999987'), (b'x-ratelimit-reset-requests', b'6ms'), (b'x-ratelimit-reset-tokens', b'0s'), (b'x-request-id', b'req_da533109212b04b9b946ff6e5ee239e3'), (b'cf-cache-status', b'DYNAMIC'), (b'X-Content-Type-Options', b'nosniff'), (b'Server', b'cloudflare'), (b'CF-RAY', b'916454c49aafeaf2-DFW'), (b'Content-Encoding', b'gzip'), (b'alt-svc', b'h3=":443"; ma=86400')])
+
+2025-02-23T04:04:19.630 app[781177ec2273d8] dfw [info] INFO:httpx:HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 200 OK"
+
+2025-02-23T04:04:19.630 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:receive_response_body.started request=<Request [b'POST']>
+
+2025-02-23T04:04:19.639 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:receive_response_body.complete
+
+2025-02-23T04:04:19.640 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:response_closed.started
+
+2025-02-23T04:04:19.640 app[781177ec2273d8] dfw [info] DEBUG:httpcore.http11:response_closed.complete
+
+2025-02-23T04:04:19.640 app[781177ec2273d8] dfw [info] DEBUG:openai._base_client:HTTP Response: POST https://api.openai.com/v1/embeddings "200 OK" Headers({'date': 'Sun, 23 Feb 2025 04:04:19 GMT', 'content-type': 'application/json', 'transfer-encoding': 'chunked', 'connection': 'keep-alive', 'access-control-allow-origin': '*', 'access-control-expose-headers': 'X-Request-ID', 'openai-model': 'text-embedding-3-small', 'openai-organization': 'bloomtech', 'openai-processing-ms': '42', 'openai-version': '2020-10-01', 'strict-transport-security': 'max-age=31536000; includeSubDomains; preload', 'via': 'envoy-router-76844b95c6-f4h8q', 'x-envoy-upstream-service-time': '30', 'x-ratelimit-limit-requests': '10000', 'x-ratelimit-limit-tokens': '10000000', 'x-ratelimit-remaining-requests': '9999', 'x-ratelimit-remaining-tokens': '9999987', 'x-ratelimit-reset-requests': '6ms', 'x-ratelimit-reset-tokens': '0s', 'x-request-id': 'req_da533109212b04b9b946ff6e5ee239e3', 'cf-cache-status': 'DYNAMIC', 'x-content-type-options': 'nosniff', 'server': 'cloudflare', 'cf-ray': '916454c49aafeaf2-DFW', 'content-encoding': 'gzip', 'alt-svc': 'h3=":443"; ma=86400'})
+
+2025-02-23T04:04:19.640 app[781177ec2273d8] dfw [info] DEBUG:openai._base_client:request_id: req_da533109212b04b9b946ff6e5ee239e3
+
+2025-02-23T04:04:19.650 app[781177ec2273d8] dfw [info] ERROR:server:Error prewarming cache for query 'How do I customize the CSS and styling of my hub?': shapes (0,) and (1536,) not aligned: 0 (dim 0) != 1536 (dim 0)
+
+2025-02-23T04:04:19.651 app[781177ec2273d8] dfw [info] INFO:server:Cache prewarming completed in 5.92 seconds
+
+2025-02-23T04:04:19.651 app[781177ec2273d8] dfw [info] INFO: Application startup complete.
+
+2025-02-23T04:04:19.651 app[781177ec2273d8] dfw [info] INFO: Uvicorn running on http://0.0.0.0:8080 (Press CTRL+C to quit)
+
+2025-02-23T04:04:20.392 proxy[781177ec2273d8] dfw [info] machine became reachable in 8.31430619s
+
+2025-02-23T04:04:20.394 app[781177ec2273d8] dfw [info] INFO: 172.16.20.218:57174 - "POST /voice HTTP/1.1" 200 OK
+
+2025-02-23T04:04:31.362 app[781177ec2273d8] dfw [info] INFO: 172.16.20.218:58648 - "POST /None/voice HTTP/1.1" 404 Not Found
