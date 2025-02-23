@@ -6,15 +6,30 @@ import websockets
 from fastapi import FastAPI, WebSocket, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.websockets import WebSocketDisconnect
+from openai import OpenAI
 from twilio.twiml.voice_response import VoiceResponse, Connect, Say, Stream
 from dotenv import load_dotenv
+from rag import RAGRetriever
 
 load_dotenv()
+
+# Load knowledge base
+with open('knowledge_base.json', 'r') as f:
+    knowledge_base = json.load(f)
+
+# Format knowledge base articles into a string
+knowledge_base_text = "\n\n".join([
+    f"Article: {article['title']}\n"
+    f"Category: {article['category']}\n"
+    f"Summary: {article['summary']}\n"
+    f"Content: {json.dumps(article['content'], indent=2)}"
+    for article in knowledge_base['articles']
+])
 
 # Configuration
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 PORT = int(os.getenv('PORT', 5050))
-SYSTEM_MESSAGE = """
+SYSTEM_MESSAGE = f"""
 You are a helpful and bubbly customer support agent for Kayako who loves to chat to customers. 
 You specialize in providing clear, actionable answers based on Kayako's documentation.
 
@@ -28,7 +43,8 @@ When responding:
 Evaluate the provided documentation:
 - If it contains ANY relevant information to answer the question, use it to provide specific guidance
 - If it's completely unrelated or doesn't help answer the question at all, respond with:
-"I'm sorry, but I'm not I can help you with that."
+"I'm sorry, but I'm not sure I can help you with that."
+- After any response to a user query that is not a question, ask "Is there anything else I can help you with?"
 
 When providing instructions:
 - Convert any technical steps into natural spoken language
@@ -36,7 +52,11 @@ When providing instructions:
 - Keep steps sequential and clear
 - Avoid technical jargon unless necessary
 
-Keep responses under 3-4 sentences when possible, but ensure all critical steps are included."""
+Keep responses under 3-4 sentences when possible, but ensure all critical steps are included.
+
+KNOWLEDGE BASE DOCUMENTATION:
+{knowledge_base_text}
+"""
 # SYSTEM_MESSAGE = (
 #     "You are a helpful and bubbly AI assistant who loves to chat about "
 #     "anything the user is interested in and is prepared to offer them facts. "
@@ -56,6 +76,11 @@ app = FastAPI()
 
 if not OPENAI_API_KEY:
     raise ValueError('Missing the OpenAI API key. Please set it in the .env file.')
+
+openai_client = OpenAI(api_key=OPENAI_API_KEY)
+
+# Initialize the RAG retriever
+retriever = RAGRetriever(openai_client)
 
 @app.get("/", response_class=JSONResponse)
 async def index_page():
@@ -136,11 +161,32 @@ async def handle_media_stream(websocket: WebSocket):
             try:
                 async for openai_message in openai_ws:
                     response = json.loads(openai_message)
+                    print(f"Received response: {response}")
+
+                    # if response.get('type') == 'conversation.item.input_audio_transcription.completed':
+                    #     print(f"Received transcription: {response}")
+                    #     transcription_text = response.get('transcription')
+                    #     if transcription_text:
+                    #         print("User transcription:", transcription_text)
+                    #         # Retrieve relevant context based on the transcription
+                    #         relevant_info = await retriever.retrieve(transcription_text)
+                    #         # Inject this context into the conversation
+                    #         add_context_event = {
+                    #             "type": "conversation.item.create",
+                    #             "item": {
+                    #                 "type": "context",
+                    #                 "role": "system",
+                    #                 "content": relevant_info
+                    #             }
+                    #         }
+                    #         await openai_ws.send(json.dumps(add_context_event))
+
                     if response['type'] in LOG_EVENT_TYPES:
                         print(f"Received event: {response['type']}", response)
 
                     if response.get('type') == 'response.content.done':
                         print(f"Response content done: {response}")
+                        
                     elif response.get('type') == 'response.done':
                         print(f"Response done: {response}")
                     elif response.get('type') == 'response.audio.delta':
@@ -246,6 +292,9 @@ async def initialize_session(openai_ws):
             "turn_detection": {"type": "server_vad"},
             "input_audio_format": "g711_ulaw",
             "output_audio_format": "g711_ulaw",
+            "input_audio_transcription": {
+                "model": "whisper-1"
+            },
             "voice": VOICE,
             "instructions": SYSTEM_MESSAGE,
             "modalities": ["text", "audio"],
