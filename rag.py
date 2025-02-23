@@ -39,12 +39,36 @@ class RAGRetriever:
     def _load_precomputed_embeddings(self, file_path: str):
         """Load pre-computed embeddings from file"""
         try:
+            logger.info(f"Loading pre-computed embeddings from {file_path}")
+            if not os.path.exists(file_path):
+                logger.error(f"Embeddings file not found: {file_path}")
+                raise FileNotFoundError(f"Embeddings file not found: {file_path}")
+                
             data = np.load(file_path, allow_pickle=True)
-            self.embeddings = data['embeddings']
-            self.chunks = json.loads(str(data['chunks']))
-            logger.info(f"Loaded {len(self.chunks)} chunks with embeddings")
+            
+            # Validate the loaded data
+            if 'embeddings' not in data or 'chunks' not in data:
+                logger.error("Invalid embeddings file format - missing required arrays")
+                raise ValueError("Invalid embeddings file format - missing required arrays")
+                
+            embeddings = data['embeddings']
+            chunks = json.loads(str(data['chunks']))
+            
+            if len(embeddings) == 0 or len(chunks) == 0:
+                logger.error("Empty embeddings or chunks in file")
+                raise ValueError("Empty embeddings or chunks in file")
+                
+            if embeddings.shape[1] != 1536:  # Expected embedding dimension for text-embedding-3-small
+                logger.error(f"Invalid embedding dimension: {embeddings.shape[1]}, expected 1536")
+                raise ValueError(f"Invalid embedding dimension: {embeddings.shape[1]}, expected 1536")
+                
+            self.embeddings = embeddings
+            self.chunks = chunks
+            logger.info(f"Successfully loaded {len(chunks)} chunks with embeddings of shape {embeddings.shape}")
+            
         except Exception as e:
             logger.error(f"Error loading pre-computed embeddings: {e}")
+            # Don't set empty values, let the error propagate
             raise
             
     def process_articles(self, articles: List[Dict]):
