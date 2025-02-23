@@ -7,7 +7,7 @@
 # Twilio - for handling phone calls
 # Other utilities for various functionalities
 from fastapi import FastAPI, HTTPException, Request, WebSocket
-from fastapi.responses import Response
+from fastapi.responses import Response, HTMLResponse
 from openai import OpenAI, RateLimitError
 from twilio.rest import Client
 from twilio.base.exceptions import TwilioRestException
@@ -25,6 +25,8 @@ from dataclasses import dataclass
 from datetime import datetime
 import websockets
 import re
+from twilio.twiml.voice_response import VoiceResponse, Start, Connect
+from fastapi import WebSocketDisconnect
 
 # Import our custom modules
 from prompts import SYSTEM_PROMPT, INTENT_CLASSIFICATION_PROMPT
@@ -285,7 +287,7 @@ class WebSocketRetry:
                     self.logger.info(f"Retrying WebSocket connection in {delay} seconds (attempt {attempt + 1}/{self.max_retries})")
                     await asyncio.sleep(delay)
                 
-                return await websockets.connect(url, extra_headers=headers)
+                return await websockets.connect(url, headers=headers)
                 
             except websockets.exceptions.WebSocketException as e:
                 last_exception = e
@@ -559,358 +561,230 @@ def classify_intent(response: str, context: str) -> IntentType:
         logger.error(f"Error in intent classification: {e}")
         return "UNCLEAR"
 
-@app.post("/voice")
-async def handle_call():
-    # This is the entry point for new phone calls
-    # It answers the call and starts the conversation with Media Streams
-    twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-    <Start>
-        <Stream url="{os.getenv('SERVER_URL')}/media" mode="full-duplex"/>
-    </Start>
-    <Pause length="120"/>
-    <Redirect method="POST">{os.getenv('SERVER_URL')}/voice</Redirect>
-</Response>"""
-    return Response(content=twiml, media_type="application/xml")
+@app.post("/incoming-call")
+async def handle_incoming_call(request: Request):
+    """Handle incoming call and return TwiML response to connect to Media Stream."""
+    logger.info("Received incoming call request")
+    response = VoiceResponse()
+    # <Say> punctuation to improve text-to-speech flow
+    response.say("Please wait while we connect your call to the A. I. voice assistant, powered by Twilio and the Open-A.I. Realtime API")
+    response.pause(length=1)
+    response.say("O.K. you can start talking!")
 
-@app.websocket("/media")
-async def media_stream(websocket: WebSocket):
-    logger.info("New WebSocket connection attempt")
-    await websocket.accept()
-    logger.info("WebSocket connection accepted")
-    call_sid = None
-    heartbeat_task = None
-    stream_sid = None
-    
-    async def send_heartbeat():
-        try:
-            while True:
-                await asyncio.sleep(30)  # Send heartbeat every 30 seconds
-                await websocket.send_json({"event": "heartbeat"})
-                logger.debug("Heartbeat sent")
-        except websockets.exceptions.ConnectionClosed:
-            logger.info("WebSocket closed during heartbeat")
-        except Exception as e:
-            logger.error(f"Error in heartbeat: {e}")
-    
+    host = request.url.hostname
+    logger.info(f"Setting up WebSocket connection with host: {host}")
+    connect = Connect()
+    connect.stream(url=f'wss://{host}/media-stream')
+    response.append(connect)
+    logger.info("TwiML response created with WebSocket stream connection")
+    return HTMLResponse(content=str(response), media_type="application/xml")
+
+@app.websocket("/media-stream")
+async def handle_media_stream(websocket: WebSocket):
+    """Handle WebSocket connections between Twilio and OpenAI."""
+    logger.info("New WebSocket connection attempt received")
     try:
-        # Wait for the initial connected message from Twilio
-        logger.info("Waiting for initial connected message")
-        data = await websocket.receive_text()
-        msg = json.loads(data)
-        if msg.get("event") != "connected":
-            logger.error(f"Expected 'connected' event, got: {msg.get('event')}")
-            raise ValueError("Expected 'connected' event")
-        logger.info("Received connected event")
-        
-        # Wait for the start message which contains call metadata
-        logger.info("Waiting for start message")
-        data = await websocket.receive_text()
-        msg = json.loads(data)
-        if msg.get("event") != "start":
-            logger.error(f"Expected 'start' event, got: {msg.get('event')}")
-            raise ValueError("Expected 'start' event")
+        await websocket.accept()
+        logger.info("WebSocket connection accepted")
+
+        logger.info("Attempting to connect to OpenAI Realtime API...")
+        async with websockets.connect(
+            'wss://api.openai.com/v1/realtime?model=gpt-4-turbo-preview',
+            headers={
+                "Authorization": f"Bearer {os.getenv('OPENAI_API_KEY')}",
+                "OpenAI-Beta": "realtime=v1"
+            }
+        ) as openai_ws:
+            logger.info("Successfully connected to OpenAI Realtime API")
+            await initialize_session(openai_ws)
+
+            # Connection specific state
+            stream_sid = None
+            latest_media_timestamp = 0
+            last_assistant_item = None
+            mark_queue = []
+            response_start_timestamp_twilio = None
             
-        # Extract important metadata
-        start_data = msg.get("start", {})
-        call_sid = start_data.get("callSid")
-        stream_sid = start_data.get("streamSid")
-        if not call_sid or not stream_sid:
-            logger.error(f"Missing metadata - callSid: {call_sid}, streamSid: {stream_sid}")
-            raise ValueError("Missing callSid or streamSid")
-        
-        logger.info(f"Started streaming session for call {call_sid}")
-        
-        # Initialize conversation context
-        conversation_context[call_sid] = {
-            "last_query": None,
-            "current_question": None,
-            "invalid_attempts": 0,
-            "silence_attempts": 0,
-            "total_turns": 0
-        }
-        logger.info("Conversation context initialized")
-        
-        # Send initial greeting
-        logger.info("Sending initial greeting")
-        greeting = "Thank you for calling the Kayako Help Center today. How may I assist you?"
-        greeting_payload = {
-            "event": "media",
-            "streamSid": stream_sid,
-            "media": {
-                "payload": base64.b64encode(greeting.encode('utf-8')).decode('utf-8'),
-                "contentType": "text/plain",
-                "encoding": "base64"
-            }
-        }
-        logger.info(f"Greeting payload prepared: {greeting_payload}")
-        await websocket.send_json(greeting_payload)
-        logger.info("Initial greeting sent")
-        
-        # Send mark to track when greeting is done
-        await websocket.send_json({
-            "event": "mark",
-            "streamSid": stream_sid,
-            "mark": {
-                "name": "greeting_complete"
-            }
-        })
-        logger.info("Greeting mark sent")
-        
-        # Start heartbeat task
-        heartbeat_task = asyncio.create_task(send_heartbeat())
-        logger.info("Heartbeat task started")
-        
-        while True:
-            try:
-                logger.debug("Waiting for next message")
-                data = await websocket.receive_text()
-                msg = json.loads(data)
-                logger.debug(f"Received message type: {msg.get('event')}")
-                
-                if msg["event"] == "media":
-                    if not call_sid:
-                        logger.error("Received media without proper initialization")
-                        continue
-                    
-                    # Process audio chunk
-                    chunk = base64.b64decode(msg["media"]["payload"])
-                    logger.debug(f"Processing audio chunk of size: {len(chunk)}")
-                    if transcript := await streaming_processor.process_chunk(call_sid, chunk, websocket):
-                        logger.info(f"Processed transcript: {transcript}")
-                        # Get conversation context
-                        context = conversation_context.get(call_sid)
-                        if not context:
-                            logger.error(f"No context found for call {call_sid}")
-                            continue
-                        
-                        # Process the transcript and generate response
-                        response = await process_user_input(transcript, context, stream_sid, websocket)
-                        
-                        # Send mark to track when response is complete
-                        await websocket.send_json({
+            async def receive_from_twilio():
+                """Receive audio data from Twilio and send it to the OpenAI Realtime API."""
+                nonlocal stream_sid, latest_media_timestamp
+                try:
+                    logger.info("Starting Twilio receive loop")
+                    async for message in websocket.iter_text():
+                        data = json.loads(message)
+                        if data['event'] == 'media' and openai_ws.open:
+                            latest_media_timestamp = int(data['media']['timestamp'])
+                            audio_append = {
+                                "type": "input_audio_buffer.append",
+                                "audio": data['media']['payload']
+                            }
+                            await openai_ws.send(json.dumps(audio_append))
+                            logger.debug(f"Processed media chunk at timestamp: {latest_media_timestamp}")
+                        elif data['event'] == 'start':
+                            stream_sid = data['start']['streamSid']
+                            logger.info(f"Stream started with SID: {stream_sid}")
+                            response_start_timestamp_twilio = None
+                            latest_media_timestamp = 0
+                            last_assistant_item = None
+                        elif data['event'] == 'mark':
+                            logger.debug("Received mark event")
+                            if mark_queue:
+                                mark_queue.pop(0)
+                        elif data['event'] == 'stop':
+                            logger.info(f"Stream {stream_sid} stopped")
+                            if openai_ws.open:
+                                logger.info("Closing OpenAI WebSocket connection")
+                                await openai_ws.close()
+                            await websocket.close()
+                            return
+                except WebSocketDisconnect:
+                    logger.error("WebSocket disconnected in receive_from_twilio")
+                    if openai_ws.open:
+                        await openai_ws.close()
+                except Exception as e:
+                    logger.error(f"Error in receive_from_twilio: {str(e)}", exc_info=True)
+
+            async def send_to_twilio():
+                """Receive events from the OpenAI Realtime API, send audio back to Twilio."""
+                nonlocal stream_sid, last_assistant_item, response_start_timestamp_twilio
+                try:
+                    logger.info("Starting OpenAI receive loop")
+                    async for openai_message in openai_ws:
+                        response = json.loads(openai_message)
+                        if response.get('type') == 'response.audio.delta' and 'delta' in response:
+                            audio_payload = base64.b64encode(base64.b64decode(response['delta'])).decode('utf-8')
+                            audio_delta = {
+                                "event": "media",
+                                "streamSid": stream_sid,
+                                "media": {
+                                    "payload": audio_payload
+                                }
+                            }
+                            await websocket.send_json(audio_delta)
+                            logger.debug("Sent audio response to Twilio")
+
+                            if response_start_timestamp_twilio is None:
+                                response_start_timestamp_twilio = latest_media_timestamp
+                                logger.debug(f"Set initial response timestamp: {response_start_timestamp_twilio}")
+
+                            if response.get('item_id'):
+                                last_assistant_item = response['item_id']
+                                logger.debug(f"Updated last assistant item: {last_assistant_item}")
+
+                            await send_mark(websocket, stream_sid)
+
+                        if response.get('type') == 'input_audio_buffer.speech_started':
+                            logger.info("Speech started event detected")
+                            if last_assistant_item:
+                                logger.info(f"Interrupting response with id: {last_assistant_item}")
+                                await handle_speech_started_event()
+                except Exception as e:
+                    logger.error(f"Error in send_to_twilio: {str(e)}", exc_info=True)
+
+            async def handle_speech_started_event():
+                """Handle interruption when the caller's speech starts."""
+                nonlocal response_start_timestamp_twilio, last_assistant_item
+                logger.info("Handling speech started event")
+                try:
+                    if mark_queue and response_start_timestamp_twilio is not None:
+                        elapsed_time = latest_media_timestamp - response_start_timestamp_twilio
+                        logger.info(f"Elapsed time since response start: {elapsed_time}ms")
+
+                        if last_assistant_item:
+                            truncate_event = {
+                                "type": "conversation.item.truncate",
+                                "item_id": last_assistant_item,
+                                "content_index": 0,
+                                "audio_end_ms": elapsed_time
+                            }
+                            await openai_ws.send(json.dumps(truncate_event))
+                            logger.info(f"Sent truncate event for item: {last_assistant_item}")
+                except Exception as e:
+                    logger.error(f"Error in handle_speech_started_event: {str(e)}", exc_info=True)
+
+            await websocket.send_json({
+                "event": "clear",
+                "streamSid": stream_sid
+            })
+            logger.info("Sent clear event to Twilio")
+
+            mark_queue.clear()
+            last_assistant_item = None
+            response_start_timestamp_twilio = None
+
+            async def send_mark(connection, stream_sid):
+                if stream_sid:
+                    try:
+                        mark_event = {
                             "event": "mark",
                             "streamSid": stream_sid,
-                            "mark": {
-                                "name": f"response_{context['total_turns']}_complete"
-                            }
-                        })
-                
-                elif msg["event"] == "mark":
-                    # Handle mark events (track when our audio finishes playing)
-                    logger.info(f"Received mark: {msg.get('mark', {}).get('name')}")
-                
-                elif msg["event"] == "stop":
-                    logger.info(f"Stopping stream for call {call_sid}")
-                    break
-                
-            except asyncio.TimeoutError:
-                # Send ping to check connection
-                logger.warning("Message timeout, sending ping")
-                try:
-                    await websocket.send_json({"event": "ping"})
-                except websockets.exceptions.ConnectionClosed:
-                    logger.warning(f"WebSocket connection lost for call {call_sid}")
-                    break
-                    
+                            "mark": {"name": "responsePart"}
+                        }
+                        await connection.send_json(mark_event)
+                        mark_queue.append('responsePart')
+                        logger.debug("Sent mark event")
+                    except Exception as e:
+                        logger.error(f"Error sending mark event: {str(e)}", exc_info=True)
+
+            logger.info("Starting main WebSocket loops")
+            await asyncio.gather(receive_from_twilio(), send_to_twilio())
+    except websockets.exceptions.WebSocketException as e:
+        logger.error(f"WebSocket connection error: {str(e)}", exc_info=True)
     except Exception as e:
-        logger.error(f"Error in media stream: {e}", exc_info=True)
-        try:
-            await websocket.send_json({
-                "event": "error",
-                "message": str(e)
-            })
-        except websockets.exceptions.ConnectionClosed:
-            logger.error("Could not send error message - connection closed")
+        logger.error(f"Unexpected error in handle_media_stream: {str(e)}", exc_info=True)
     finally:
-        # Clean up
-        logger.info("Starting cleanup")
-        if call_sid and call_sid in streaming_processor.active_streams:
-            await streaming_processor.handle_interrupt(call_sid)
-            logger.info("Handled stream interrupt")
-        if call_sid:
-            await streaming_processor.cleanup_old_buffers()
-            conversation_context.pop(call_sid, None)
-            logger.info("Cleaned up conversation context and buffers")
-        if heartbeat_task:
-            heartbeat_task.cancel()
-            try:
-                await heartbeat_task
-                logger.info("Heartbeat task cancelled")
-            except asyncio.CancelledError:
-                pass
-        try:
-            await websocket.close()
-            logger.info("WebSocket connection closed")
-        except websockets.exceptions.ConnectionClosed:
-            logger.info("WebSocket was already closed")
+        logger.info("WebSocket connection closed")
 
-async def process_user_input(transcript: str, context: dict, stream_sid: str, websocket: WebSocket) -> None:
-    """Process user input and send appropriate response"""
-    # Update conversation turns
-    context["total_turns"] = context.get("total_turns", 0) + 1
-    
-    # Classify user intent
-    intent = classify_intent(
-        transcript,
-        f"Current question: {context.get('current_question', 'How may I assist you?')}"
-    )
-    
-    # Generate appropriate response
-    response_text = await generate_response(transcript, intent, context)
-    
-    # Send response as media
-    await websocket.send_json({
-        "event": "media",
-        "streamSid": stream_sid,
-        "media": {
-            "payload": base64.b64encode(response_text.encode()).decode()
+async def initialize_session(openai_ws):
+    """Control initial session with OpenAI."""
+    try:
+        logger.info("Initializing OpenAI session")
+        session_update = {
+            "type": "session.update",
+            "session": {
+                "turn_detection": {"type": "server_vad"},
+                "input_audio_format": "g711_ulaw",
+                "output_audio_format": "g711_ulaw",
+                "voice": "alloy",
+                "instructions": "You are a helpful AI assistant for Kayako's help center. Answer questions about Kayako's features and functionality clearly and concisely.",
+                "modalities": ["text", "audio"],
+                "temperature": 0.7,
+            }
         }
-    })
+        logger.debug(f'Sending session update: {json.dumps(session_update)}')
+        await openai_ws.send(json.dumps(session_update))
+        logger.info("Session update sent successfully")
 
-async def generate_response(transcript: str, intent: str, context: dict) -> str:
-    """Generate appropriate response based on intent and context"""
-    if context.get("total_turns") > MAX_TOTAL_TURNS:
-        return "I notice this has been a long conversation. To ensure quality service, let me connect you with a human agent who can provide more comprehensive assistance."
-        
-    if context.get("current_question") == "Do you need help with anything else?" and intent == "END_CALL":
-        return "Thank you for calling Kayako Help Center. Have a great day!"
-        
-    if intent in ["OFF_TOPIC", "UNCLEAR"]:
-        context["invalid_attempts"] = context.get("invalid_attempts", 0) + 1
-        if context["invalid_attempts"] >= MAX_INVALID_ATTEMPTS:
-            return "I apologize, but I'm having trouble understanding your needs. Let me connect you with a human agent who can better assist you."
-        return "I can only assist with questions related to Kayako and its services. Please ask a Kayako-related question." if intent == "OFF_TOPIC" else "I'm not sure I understood. Could you please rephrase your question about Kayako?"
-    
-    # For valid queries, get knowledge and generate response
-    context["invalid_attempts"] = 0
-    context["last_query"] = transcript
-    
-    knowledge = await response_cache.get_knowledge(transcript)
-    response = await format_response(knowledge, transcript)
-    
-    # Update current question
-    context["current_question"] = "Do you need help with anything else?"
-    if "connect you with a human" in knowledge:
-        context["current_question"] = "Would you like me to connect you with a human support agent?"
-        
-    return response
+        # Send initial greeting
+        await send_initial_conversation_item(openai_ws)
+    except Exception as e:
+        logger.error(f"Error in initialize_session: {str(e)}", exc_info=True)
+        raise
 
-def retrieve_data(query: str) -> str:
-    # Get relevant information from our knowledge base
-    #
-    # Args:
-    #     query: The user's question
-    #        
-    # Returns:
-    #     Information from our help articles that answers their question
-    
-    # Get the 3 most relevant pieces of information
-    results = rag.retrieve(query, top_k=3)
-    
-    # Format the information nicely
-    context = []
-    total_chars = 0
-    max_chars = 2000  # Keep responses a reasonable length
-    
-    for result in results:
-        # Add the article title and content
-        content = result['text']
-        
-        # Make sure we don't make the response too long
-        chunk_length = len(content) + len(result['title']) + 10
-        if total_chars + chunk_length > max_chars:
-            logger.debug(f"Skipping chunk due to length limit. Current total: {total_chars}, Chunk size: {chunk_length}")
-            break
-            
-        context.append(f"Title: {result['title']}\n\n{content}")
-        total_chars += chunk_length
-        logger.debug(f"Retrieved chunk from article: {result['title']}, Similarity: {result['similarity']:.3f}")
-        logger.debug(f"Content preview: {content[:200]}...")
-        logger.debug(f"Estimated tokens: {total_chars // 4}")
-        
-    return "\n\n---\n\n".join(context)
-
-async def format_response(knowledge: str, query: str) -> AsyncGenerator[str, None]:
-    # Create a natural-sounding response to the user's question
-    #
-    # Args:
-    #     knowledge: Information from our help articles
-    #     query: The user's question
-    #        
-    # Yields:
-    #     Pieces of the response, one at a time
-    
-    max_retries = 3
-    base_delay = 1  # seconds
-    
-    for attempt in range(max_retries):
-        try:
-            # First check if we have relevant information
-            analysis = await openai_client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=[
-                    {"role": "system", "content": "You are an expert at analyzing whether documentation is relevant to a user's question. Respond with 'RELEVANT' or 'NOT_RELEVANT' followed by a brief reason."},
-                    {"role": "user", "content": f"Question: {query}\n\nDocumentation:\n{knowledge}"}
-                ],
-                temperature=0,
-                max_tokens=100
-            )
-            relevance = analysis.choices[0].message.content
-            logger.debug(f"Relevance analysis: {relevance}")
-            
-            # If we don't have relevant info, let them know
-            if relevance.startswith("NOT_RELEVANT"):
-                yield "I'm sorry, but I'm not familiar with that aspect of Kayako."
-                return
-            
-            # Generate a response one piece at a time
-            stream = await openai_client.chat.completions.create(
-        model="gpt-3.5-turbo",
-        messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": f"User's question: {query}\n\nRelevant documentation:\n{knowledge}"}
-                ],
-                max_tokens=500,
-                stream=True
-            )
-            
-            # Build up sentences one word at a time
-            current_sentence = []
-            async for chunk in stream:
-                if not chunk.choices:
-                    continue
-                content = chunk.choices[0].delta.content
-                if not content:
-                    continue
-                
-                # Add the new word to our current sentence
-                current_sentence.append(content)
-                
-                # When we have a complete sentence, send it
-                text = ''.join(current_sentence)
-                if any(text.rstrip().endswith(char) for char in '.!?'):
-                    yield text
-                    current_sentence = []
-            
-            # Send any remaining words
-            if current_sentence:
-                yield ''.join(current_sentence)
-            return
-            
-        except RateLimitError as e:
-            # Handle hitting OpenAI's rate limits
-            if attempt == max_retries - 1:
-                logger.error(f"OpenAI rate limit exceeded after {max_retries} attempts")
-                yield "I apologize, but I'm currently experiencing high demand. Please try again in a moment."
-                return
-            delay = base_delay * (2 ** attempt)  # Wait longer between each retry
-            await asyncio.sleep(delay)
-        except Exception as e:
-            # Handle any other errors
-            logger.error(f"Error in OpenAI API call: {e}")
-            yield "I apologize, but I'm having trouble processing your request right now."
-            return
+async def send_initial_conversation_item(openai_ws):
+    """Send initial conversation item for AI greeting."""
+    try:
+        logger.info("Sending initial conversation item")
+        initial_conversation_item = {
+            "type": "conversation.item.create",
+            "item": {
+                "type": "message",
+                "role": "user",
+                "content": [
+                    {
+                        "type": "input_text",
+                        "text": "Greet the user and ask how you can help them with Kayako today."
+                    }
+                ]
+            }
+        }
+        await openai_ws.send(json.dumps(initial_conversation_item))
+        logger.info("Initial conversation item sent")
+        await openai_ws.send(json.dumps({"type": "response.create"}))
+        logger.info("Response creation triggered")
+    except Exception as e:
+        logger.error(f"Error in send_initial_conversation_item: {str(e)}", exc_info=True)
+        raise
 
 @app.get("/monitor/cache")
 async def get_cache_stats():
