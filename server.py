@@ -49,6 +49,7 @@ Evaluate the provided documentation:
 - If the user responds with no or any variant of that to the question "Is there anything else I can help you with?", say "Thank you for calling Kayako's help center. Have a great day!"
 - If at any point the user indicates that they are done or want to end the call, say "Thank you for calling Kayako's help center. Have a great day!"
 - Only use this predefined termination message "Thank you for calling Kayako's help center. Have a great day!" at any point where you would want to end the call.
+- If the user's transcription is empty or incoherent, say "I'm sorry, I didn't catch that. Could you please repeat that again?"
 
 When providing instructions:
 - Convert any technical steps into natural spoken language
@@ -185,11 +186,11 @@ async def handle_media_stream(websocket: WebSocket):
                     response = json.loads(openai_message)
                     print(f"Received response: {response}")
 
-                    # if response.get('type') == 'conversation.item.input_audio_transcription.completed':
-                    #     print(f"Received transcription: {response}")
-                    #     transcription_text = response.get('transcription')
-                    #     if transcription_text:
-                    #         print("User transcription:", transcription_text)
+                    if response.get('type') == 'conversation.item.input_audio_transcription.completed':
+                        print(f"Received transcription: {response}")
+                        transcription_text = response.get('transcription')
+                        if transcription_text:
+                            print("User transcription:", transcription_text)
                     #         # Retrieve relevant context based on the transcription
                     #         relevant_info = await retriever.retrieve(transcription_text)
                     #         # Inject this context into the conversation
