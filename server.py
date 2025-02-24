@@ -11,6 +11,7 @@ from twilio.twiml.voice_response import VoiceResponse, Connect, Say, Stream
 from dotenv import load_dotenv
 from rag import RAGRetriever
 
+# Load environment variables from .env file
 load_dotenv()
 
 # Load knowledge base
@@ -45,6 +46,9 @@ Evaluate the provided documentation:
 - If it's completely unrelated or doesn't help answer the question at all, respond with:
 "I'm sorry, but I'm not sure I can help you with that."
 - After any response to a user query that is not a question, ask "Is there anything else I can help you with?"
+- If the user responds with no or any variant of that to the question "Is there anything else I can help you with?", say "Thank you for calling Kayako's help center. Have a great day!"
+- If at any point the user indicates that they are done or want to end the call, say "Thank you for calling Kayako's help center. Have a great day!"
+- Only use this predefined termination message "Thank you for calling Kayako's help center. Have a great day!" at any point where you would want to end the call.
 
 When providing instructions:
 - Convert any technical steps into natural spoken language
@@ -63,20 +67,29 @@ KNOWLEDGE BASE DOCUMENTATION:
 #     "You have a penchant for dad jokes, owl jokes, and rickrolling – subtly. "
 #     "Always stay positive, but work in a joke when appropriate."
 # )
+
+# Voice configuration for text-to-speech
 VOICE = 'alloy'
+
+# Event types to log during conversation
 LOG_EVENT_TYPES = [
     'error', 'response.content.done', 'rate_limits.updated',
     'response.done', 'input_audio_buffer.committed',
     'input_audio_buffer.speech_stopped', 'input_audio_buffer.speech_started',
     'session.created'
 ]
+
+# Flag to control display of timing calculations in logs
 SHOW_TIMING_MATH = False
 
+# Initialize FastAPI application
 app = FastAPI()
 
+# Validate OpenAI API key presence
 if not OPENAI_API_KEY:
     raise ValueError('Missing the OpenAI API key. Please set it in the .env file.')
 
+# Initialize OpenAI client with API key
 openai_client = OpenAI(api_key=OPENAI_API_KEY)
 
 # Initialize the RAG retriever
@@ -84,19 +97,25 @@ retriever = RAGRetriever(openai_client)
 
 @app.get("/", response_class=JSONResponse)
 async def index_page():
+    """Return a simple health check message for the server."""
     return {"message": "Twilio Media Stream Server is running!"}
 
 @app.api_route("/incoming-call", methods=["GET", "POST"])
 async def handle_incoming_call(request: Request):
     """Handle incoming call and return TwiML response to connect to Media Stream."""
+    # Initialize TwiML response object
     response = VoiceResponse()
     # <Say> punctuation to improve text-to-speech flow
     # response.say("Please wait while we connect your call to the A. I. voice assistant, powered by Twilio and the Open-A.I. Realtime API")
     # response.pause(length=1)
     # response.say("O.K. you can start talking!")
+    
+    # Get the host from the request URL
     host = request.url.hostname
+    # Create a connection to the media stream
     connect = Connect()
     connect.stream(url=f'wss://{host}/media-stream')
+    # Add the connection to the response
     response.append(connect)
     return HTMLResponse(content=str(response), media_type="application/xml")
 
@@ -104,23 +123,26 @@ async def handle_incoming_call(request: Request):
 async def handle_media_stream(websocket: WebSocket):
     """Handle WebSocket connections between Twilio and OpenAI."""
     print("Client connected")
+    # Accept the WebSocket connection
     await websocket.accept()
 
+    # Establish WebSocket connection to OpenAI's realtime API
     async with websockets.connect(
-        'wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-10-01',
+        'wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-12-17',
         extra_headers={
             "Authorization": f"Bearer {OPENAI_API_KEY}",
             "OpenAI-Beta": "realtime=v1"
         }
     ) as openai_ws:
+        # Initialize the conversation session
         await initialize_session(openai_ws)
 
-        # Connection specific state
-        stream_sid = None
-        latest_media_timestamp = 0
-        last_assistant_item = None
-        mark_queue = []
-        response_start_timestamp_twilio = None
+        # Initialize connection state variables
+        stream_sid = None  # Unique identifier for the stream
+        latest_media_timestamp = 0  # Track the most recent media timestamp
+        last_assistant_item = None  # Track the last assistant response
+        mark_queue = []  # Queue for tracking response parts
+        response_start_timestamp_twilio = None  # Track when responses start
         
         async def receive_from_twilio():
             """Receive audio data from Twilio and send it to the OpenAI Realtime API."""
@@ -191,9 +213,30 @@ async def handle_media_stream(websocket: WebSocket):
                         print(f"Response done: {response}")
                     elif response.get('type') == 'response.audio.delta':
                         print(f"Response audio delta: {response}")
+                    
+                    if response.get('type') == 'response.audio_transcript.done':
+                        transcript = response.get('transcript')
+                        if "Thank you for calling Kayako's help center. Have a great day!" in transcript:
+                            print("Termination command detected. Ending call.")
+                            await asyncio.sleep(4)
+                            await websocket.close()
+                            if openai_ws.open:
+                                await openai_ws.close()
+                            return
 
+                    # Check for termination condition in the AI's response
                     if response.get('type') == 'response.audio.delta' and 'delta' in response:
+                        # Decode the audio delta to check for termination command
                         audio_payload = base64.b64encode(base64.b64decode(response['delta'])).decode('utf-8')
+                        # Here, you would decode the audio to text if possible, or check for a specific signal
+                        # For simplicity, let's assume we have a function `check_for_termination_command`
+                        # if check_for_termination_command(audio_payload):
+                        #     print("Termination command detected. Ending call.")
+                        #     await websocket.close()
+                        #     if openai_ws.open:
+                        #         await openai_ws.close()
+                        #     return
+
                         audio_delta = {
                             "event": "media",
                             "streamSid": stream_sid,
@@ -265,8 +308,16 @@ async def handle_media_stream(websocket: WebSocket):
 
         await asyncio.gather(receive_from_twilio(), send_to_twilio())
 
+def check_for_termination_command(audio_payload):
+    # Implement logic to decode audio and check for termination command
+    # This is a placeholder function
+    # You might need to use a speech-to-text service to decode the audio
+    # and then check if the text contains a termination command
+    return False
+
 async def send_initial_conversation_item(openai_ws):
     """Send initial conversation item if AI talks first."""
+    # Create the initial greeting message
     initial_conversation_item = {
         "type": "conversation.item.create",
         "item": {
@@ -280,12 +331,15 @@ async def send_initial_conversation_item(openai_ws):
             ]
         }
     }
+    # Send the greeting message
     await openai_ws.send(json.dumps(initial_conversation_item))
+    # Trigger response generation
     await openai_ws.send(json.dumps({"type": "response.create"}))
 
 
 async def initialize_session(openai_ws):
     """Control initial session with OpenAI."""
+    # Configure session parameters including VAD settings
     session_update = {
         "type": "session.update",
         "session": {
@@ -294,7 +348,8 @@ async def initialize_session(openai_ws):
                 # "mode": "quality",  # Use quality mode for better noise filtering
                 "threshold": 0.7,   # Higher threshold means less sensitive to background noise (default is 0.5)
                 # "min_speech_duration_ms": 200,  # Minimum duration to consider something as speech
-                # "min_silence_duration_ms": 400  # Minimum silence duration before considering speech ended
+                # "min_silence_duration_ms": 500,  # Wait longer before considering speech as ended
+                # "speech_pad_ms": 400  # Add padding to avoid cutting off speech too early
             },
             "input_audio_format": "g711_ulaw",
             "output_audio_format": "g711_ulaw",
@@ -307,12 +362,14 @@ async def initialize_session(openai_ws):
             "temperature": 0.8,
         }
     }
+    # Log and send session configuration
     print('Sending session update:', json.dumps(session_update))
     await openai_ws.send(json.dumps(session_update))
 
-    # Uncomment the next line to have the AI speak first
+    # Initialize the conversation with a greeting
     await send_initial_conversation_item(openai_ws)
 
+# Start the server if running as main script
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=PORT)
