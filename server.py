@@ -126,6 +126,9 @@ async def handle_media_stream(websocket: WebSocket):
     # Add conversation transcript variable
     conversation_transcript = []
 
+    # Initialize call recording file
+    call_recording_file = None
+    
     # Establish WebSocket connection to OpenAI's realtime API
     async with websockets.connect(
         'wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-12-17',
@@ -149,17 +152,30 @@ async def handle_media_stream(websocket: WebSocket):
         # Receive audio data from Twilio and send it to the OpenAI Realtime API
         async def receive_from_twilio():
             """Receive audio data from Twilio and send it to the OpenAI Realtime API."""
-            nonlocal stream_sid, latest_media_timestamp, call_sid, end_call_triggered  # Add call_sid to nonlocal
+            nonlocal stream_sid, latest_media_timestamp, call_sid, end_call_triggered, call_recording_file
             try:
                 async for message in websocket.iter_text():
                     data = json.loads(message)
                     if data['event'] == 'media' and openai_ws.open:
+                        # Get the audio payload
+                        audio_payload = data['media']['payload']
+                        decoded_audio = base64.b64decode(audio_payload)
+                        
+                        # Open recording file if not already open
+                        if call_sid and not call_recording_file:
+                            call_recording_file = open(f'call_{call_sid}.ulaw', 'wb')
+                        
+                        # Write user audio with a marker
+                        if call_recording_file:
+                            # You could add a marker here if needed
+                            call_recording_file.write(decoded_audio)
+                        
+                        # Continue with regular processing
                         latest_media_timestamp = int(data['media']['timestamp'])
-                        audio_append = {
+                        await openai_ws.send(json.dumps({
                             "type": "input_audio_buffer.append",
-                            "audio": data['media']['payload']
-                        }
-                        await openai_ws.send(json.dumps(audio_append))
+                            "audio": audio_payload
+                        }))
                     elif data['event'] == 'start':
                         stream_sid = data['start']['streamSid']
                         call_sid = data['start']['callSid']
@@ -171,7 +187,14 @@ async def handle_media_stream(websocket: WebSocket):
                         if mark_queue:
                             mark_queue.pop(0)
                     elif data['event'] == 'stop':
-                        await create_call_summary_ticket(conversation_transcript)
+                        # Close the recording file if open
+                        if call_recording_file:
+                            call_recording_file.close()
+                            call_recording_file = None
+                        
+                        # Create ticket with the call recording
+                        await create_call_summary_ticket(conversation_transcript, call_sid)
+                        
                         if openai_ws.open:
                             await openai_ws.close()
                         await websocket.close()
@@ -180,11 +203,15 @@ async def handle_media_stream(websocket: WebSocket):
                 print("Client disconnected.")
                 if openai_ws.open:
                     await openai_ws.close()
+            except Exception as e:
+                print(f"Error in receive_from_twilio: {e}")
+                if call_recording_file:
+                    call_recording_file.close()
 
         # Send events to Twilio
         async def send_to_twilio():
             """Receive events from the OpenAI Realtime API, send audio back to Twilio."""
-            nonlocal stream_sid, last_assistant_item, response_start_timestamp_twilio, end_call_triggered
+            nonlocal stream_sid, last_assistant_item, response_start_timestamp_twilio, end_call_triggered, call_recording_file
             try:
                 async for openai_message in openai_ws:
                     response = json.loads(openai_message)
@@ -223,33 +250,42 @@ async def handle_media_stream(websocket: WebSocket):
                     # Ensure we have a function call event with all the necessary arguments
                     if response.get("type") == "response.function_call_arguments.done":
                         func_name = response.get("name")
-                        args_str = response.get("arguments", {})
+                        args_str = response.get("arguments", "{}")
                         call_id = response.get("call_id")
                         result = None
-                        print(f"Received function call: {func_name} with parameters: {args_str} and call_id: {call_id}")
+                        print(f"Received function call: {func_name} with call_id: {call_id}")
                         print(f"Received function call arguments: {response}")
 
-                        params = {}
-                        if isinstance(args_str, str):
-                            params = json.loads(args_str)
-                        else:
-                            params = args_str
-                        print(params)
-                    # if response.get("type") == "conversation.item.created" and response["item"].get("type") == "function_call":
-                    #     func_name = response["item"].get("name")
-                    #     params = response["item"].get("parameters", {})
-                    #     call_id = response["item"].get("call_id")
-                    #     result = None
-                    #     print(f"Received function call: {func_name} with parameters: {params} and call_id: {call_id}")
-                    #     # print(f"Weather Conversation item created response: {response}")
+                        try:
+                            # Parse the arguments string into a dictionary
+                            if isinstance(args_str, str):
+                                params = json.loads(args_str)
+                            else:
+                                params = args_str
+                            print(params)
+                            
+                            # # DO NOT REMOVE THIS COMMENTED CODE
+                            # if response.get("type") == "conversation.item.created" and response["item"].get("type") == "function_call":
+                            #     func_name = response["item"].get("name")
+                            #     params = response["item"].get("parameters", {})
+                            #     call_id = response["item"].get("call_id")
+                            #     result = None
+                            #     print(f"Received function call: {func_name} with parameters: {params} and call_id: {call_id}")
+                            #     # print(f"Weather Conversation item created response: {response}")
 
-                        # Inspect the function name and call the corresponding function.
-                        if func_name == "get_weather":
-                            location = params.get("location")
-                            units = params.get("units")
-                            result = get_weather(location, units)
-                        else:
-                            result = {"error": "Unknown function"}
+                            # Inspect the function name and call the corresponding function.
+                            if func_name == "get_weather":
+                                location = params.get("location", "")
+                                units = params.get("units", "metric")
+                                result = get_weather(location, units)
+                            else:
+                                result = {"error": "Unknown function"}
+                        except json.JSONDecodeError as e:
+                            print(f"Error parsing function arguments: {e}, args: {args_str}")
+                            result = {"error": "Invalid arguments format"}
+                        except Exception as e:
+                            print(f"Error handling function call: {e}")
+                            result = {"error": str(e)}
 
                         # Prepare a function call output event to send back to OpenAI.
                         response_event = {
@@ -268,7 +304,15 @@ async def handle_media_stream(websocket: WebSocket):
                         await openai_ws.send(json.dumps({"type": "response.create"}))
 
                     if response.get('type') == 'response.audio.delta' and 'delta' in response:
-                        audio_payload = base64.b64encode(base64.b64decode(response['delta'])).decode('utf-8')
+                        audio_data = base64.b64decode(response['delta'])
+                        
+                        # Write bot audio to the same file
+                        if call_recording_file:
+                            # You could add a marker here if needed
+                            call_recording_file.write(audio_data)
+                        
+                        # Continue with regular processing
+                        audio_payload = base64.b64encode(audio_data).decode('utf-8')
                         audio_delta = {
                             "event": "media",
                             "streamSid": stream_sid,
@@ -374,7 +418,7 @@ async def initialize_session(openai_ws):
         "session": {
             "turn_detection": {
                 "type": "server_vad",
-                "threshold": 0.5,   # Higher threshold means less sensitive to background noise (default is 0.8)
+                "threshold": 0.8,   # Higher threshold means less sensitive to background noise (default is 0.8)
             },
             "input_audio_format": "g711_ulaw",
             "output_audio_format": "g711_ulaw",
@@ -438,7 +482,8 @@ async def end_call(call_sid):
         print(f"Error ending call: {e}")
 
 # Create a call summary ticket
-async def create_call_summary_ticket(transcript):
+async def create_call_summary_ticket(transcript, call_sid=None):
+    """Create a ticket with call transcript and audio attachment."""
     # Format transcript into a string with new line separation
     print("\n=== Full Conversation Transcript ===")
     formatted_transcript = ""
@@ -447,20 +492,68 @@ async def create_call_summary_ticket(transcript):
         formatted_transcript += f"{entry['role']}: {entry['text']}\n"
     print("================================\n")
 
-    # API endpoint with query parameters
-    url = f"{KAYAKO_API_URL}?include=channel,last_public_channel,mailbox,facebook_page,facebook_account,twitter_account,user,organization,sla_metric,sla_version_target,sla_version,identity_email,identity_domain,identity_facebook,identity_twitter,identity_phone,case_field,read_marker"
+    # Prepare wav file path if we have a call_sid
+    wav_path = None
+    if call_sid:
+        try:
+            # Check if the raw audio file exists
+            ulaw_path = f'call_{call_sid}.ulaw'
+            wav_path = f'call_{call_sid}.wav'
+            
+            if os.path.exists(ulaw_path):
+                print(f"Converting audio for call {call_sid}...")
+                
+                try:
+                    # Python-based audio conversion instead of ffmpeg
+                    import wave
+                    import numpy as np
 
-    # Create data payload
+                    # Function to convert u-law to linear PCM
+                    def ulaw2linear(u_law_data):
+                        # u-law decoding table
+                        u = 255
+                        u_law_data = np.frombuffer(u_law_data, dtype=np.uint8)
+                        # Convert to signed integers
+                        sign = np.where(u_law_data < 128, 1, -1)
+                        # Remove sign bit
+                        u_law_data = np.where(u_law_data < 128, u_law_data, 255 - u_law_data)
+                        # Decode using u-law formula
+                        linear_data = sign * (((u_law_data / u) ** (1/1.5)) * (2**15 - 1))
+                        return linear_data.astype(np.int16)
+                    
+                    # Read u-law data
+                    with open(ulaw_path, 'rb') as f:
+                        u_law_data = f.read()
+                    
+                    # Convert to linear PCM
+                    linear_data = ulaw2linear(u_law_data)
+                    
+                    # Create WAV file
+                    with wave.open(wav_path, 'wb') as wav_file:
+                        wav_file.setnchannels(1)  # Mono
+                        wav_file.setsampwidth(2)  # 2 bytes (16 bits) per sample
+                        wav_file.setframerate(8000)  # 8 kHz sampling rate for u-law
+                        wav_file.writeframes(linear_data.tobytes())
+                    
+                    print(f"Successfully converted audio to {wav_path}")
+                except Exception as e:
+                    print(f"Audio conversion failed: {e}")
+                    # Fallback message
+                    print("Consider installing ffmpeg for better audio conversion support")
+                    wav_path = None
+            else:
+                print(f"No audio file found at {ulaw_path}")
+                wav_path = None
+        except Exception as e:
+            print(f"Error processing audio: {e}")
+            wav_path = None
+
+    # API endpoint with query parameters
+    url = f"{KAYAKO_API_URL}"
+
+    # Create data payload according to API documentation
     data = {
-        "field_values": {
-            "product": "80"
-        },
-        "status_id": "1",
-        "attachment_file_ids": "",
-        "tags": "gauntlet-ai",
-        "type_id": 7,
-        "channel": "MAIL",
-        "subject": "[GAUNTLET AI TEST] Call Summary - Johnny Test Email",
+        "subject": f"[GAUNTLET AI TEST] Call Summary - Call {call_sid}",
         "contents": f"""<div style="font-family: Arial, sans-serif; line-height: 1.6;">
             <div style="margin-bottom: 20px; background-color: #f6f8fa; padding: 15px; border-radius: 4px; border-left: 4px solid #0366d6;">
                 <strong>📋 SUBJECT</strong><br>
@@ -479,41 +572,72 @@ async def create_call_summary_ticket(transcript):
                 </pre>
             </div>
         </div>""",
+        "channel": "MAIL",
+        "channel_id": "1",
+        "tags": "gauntlet-ai",
+        "type_id": "7",
+        "status_id": "1",
+        "priority_id": "1",
         "assigned_agent_id": "309",
-        "form_id": "1",
         "assigned_team_id": "1",
         "requester_id": "309",
-        "channel_id": "1",
-        "priority_id": "1",
-        "channel_options": {
-            "cc": [],
-            "html": True
-        }
-    }
-
-    # Encode credentials for Basic Auth
-    auth_string = f"{KAYAKO_API_USERNAME}:{KAYAKO_API_PASSWORD}"
-    encoded_auth = base64.b64encode(auth_string.encode()).decode()
-
-    # Set headers
-    headers = {
-        "Content-Type": "application/json; charset=UTF-8",
-        "Authorization": f"Basic {encoded_auth}"
+        "form_id": "1",
     }
 
     try:
-        # Make the POST request
-        response = requests.post(url, headers=headers, data=json.dumps(data))
+        # Prepare the multipart/form-data request
+        files = {}
+        
+        # Authenticate to Kayako
+        auth = (KAYAKO_API_USERNAME, KAYAKO_API_PASSWORD)
 
-        # Check if request was successful
-        response.raise_for_status()
+        # Add the audio file to the request if it exists
+        if wav_path and os.path.exists(wav_path):
+            with open(wav_path, 'rb') as f:
+                files['attachment'] = (os.path.basename(wav_path), f, 'audio/wav')
+                # Make the POST request
+                
+                print(f"Creating case with Kayako API at {url}")
+                response = requests.post(
+                    url,
+                    auth=auth,
+                    data=data,
+                    files=files
+                )
+                
+                # Check if request was successful
+                if response.status_code in [200, 201]:
+                    result = response.json()
+                    print(f"Successfully created ticket: {result.get('data', {}).get('id')}")
+                    return result
+                else:
+                    print(f"Error creating ticket: {response.status_code} - {response.text}")
+                    return None
+            print(f"Attaching audio file: {wav_path}")
+        else:
+            print("No audio file found")
 
-        # Parse and print the JSON response
-        result = response.json()
-        print(json.dumps(result, indent=2))
-
-    except requests.exceptions.RequestException as e:
-        print(f"Error: {e}")
+            # Make the POST request
+            print(f"Creating case with Kayako API at {url}")
+            response = requests.post(
+                url,
+                auth=auth,
+                data=data,
+                files=files
+            )
+            
+            # Check if request was successful
+            if response.status_code in [200, 201]:
+                result = response.json()
+                print(f"Successfully created ticket: {result.get('data', {}).get('id')}")
+                return result
+            else:
+                print(f"Error creating ticket: {response.status_code} - {response.text}")
+                return None
+    
+    except Exception as e:
+        print(f"Error creating ticket: {e}")
+        return None
 
 # Start the server if running as main script
 if __name__ == "__main__":
