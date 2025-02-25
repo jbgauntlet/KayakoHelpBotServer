@@ -494,6 +494,7 @@ async def create_call_summary_ticket(transcript, call_sid=None):
 
     # Prepare wav file path if we have a call_sid
     wav_path = None
+    ulaw_path = None
     if call_sid:
         try:
             # Check if the raw audio file exists
@@ -584,6 +585,7 @@ async def create_call_summary_ticket(transcript, call_sid=None):
         "form_id": "1",
     }
 
+    result = None
     try:
         # Prepare the multipart/form-data request
         files = {}
@@ -609,10 +611,8 @@ async def create_call_summary_ticket(transcript, call_sid=None):
                 if response.status_code in [200, 201]:
                     result = response.json()
                     print(f"Successfully created ticket: {result.get('data', {}).get('id')}")
-                    return result
                 else:
                     print(f"Error creating ticket: {response.status_code} - {response.text}")
-                    return None
             print(f"Attaching audio file: {wav_path}")
         else:
             print("No audio file found")
@@ -630,14 +630,33 @@ async def create_call_summary_ticket(transcript, call_sid=None):
             if response.status_code in [200, 201]:
                 result = response.json()
                 print(f"Successfully created ticket: {result.get('data', {}).get('id')}")
-                return result
             else:
                 print(f"Error creating ticket: {response.status_code} - {response.text}")
-                return None
     
     except Exception as e:
         print(f"Error creating ticket: {e}")
-        return None
+    
+    finally:
+        # Clean up files after ticket creation attempt (regardless of success)
+        cleanup_files(ulaw_path, wav_path)
+        
+    return result
+
+# Helper function to clean up temporary files
+def cleanup_files(ulaw_path, wav_path):
+    """Clean up temporary audio files."""
+    try:
+        # Remove ulaw file if it exists
+        if ulaw_path and os.path.exists(ulaw_path):
+            os.remove(ulaw_path)
+            print(f"Deleted ulaw file: {ulaw_path}")
+            
+        # Remove wav file if it exists
+        if wav_path and os.path.exists(wav_path):
+            os.remove(wav_path)
+            print(f"Deleted wav file: {wav_path}")
+    except Exception as e:
+        print(f"Error cleaning up files: {e}")
 
 # Start the server if running as main script
 if __name__ == "__main__":
