@@ -3,6 +3,7 @@ import json
 import base64
 import asyncio
 import websockets
+import requests
 from fastapi import FastAPI, WebSocket, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.websockets import WebSocketDisconnect
@@ -10,11 +11,12 @@ from openai import OpenAI
 from twilio.twiml.voice_response import VoiceResponse, Connect, Say, Stream
 from dotenv import load_dotenv
 from rag import RAGRetriever
+from twilio.rest import Client
 
 # Load environment variables from .env file
 load_dotenv()
 
-# Load knowledge base
+# Load knowledge base from the knowledge_base.json file
 with open('knowledge_base.json', 'r') as f:
     knowledge_base = json.load(f)
 
@@ -30,6 +32,12 @@ knowledge_base_text = "\n\n".join([
 # Configuration
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 PORT = int(os.getenv('PORT', 5050))
+
+# Kayako API credentials
+KAYAKO_API_USERNAME = os.getenv('KAYAKO_API_USERNAME')
+KAYAKO_API_PASSWORD = os.getenv('KAYAKO_API_PASSWORD')
+KAYAKO_API_URL = os.getenv('KAYAKO_API_URL')
+
 SYSTEM_MESSAGE = f"""
 You are a helpful and bubbly customer support agent for Kayako who loves to chat to customers. 
 You specialize in providing clear, actionable answers based on Kayako's documentation.
@@ -62,26 +70,19 @@ Keep responses under 3-4 sentences when possible, but ensure all critical steps 
 KNOWLEDGE BASE DOCUMENTATION:
 {knowledge_base_text}
 """
-# SYSTEM_MESSAGE = (
-#     "You are a helpful and bubbly AI assistant who loves to chat about "
-#     "anything the user is interested in and is prepared to offer them facts. "
-#     "You have a penchant for dad jokes, owl jokes, and rickrolling – subtly. "
-#     "Always stay positive, but work in a joke when appropriate."
-# )
 
 # Voice configuration for text-to-speech
 VOICE = 'alloy'
 
-# Event types to log during conversation
-LOG_EVENT_TYPES = [
-    'error', 'response.content.done', 'rate_limits.updated',
-    'response.done', 'input_audio_buffer.committed',
-    'input_audio_buffer.speech_stopped', 'input_audio_buffer.speech_started',
-    'session.created'
-]
-
-# Flag to control display of timing calculations in logs
+# Show interruption timing math
 SHOW_TIMING_MATH = False
+
+# Fetch Twilio environment variables
+TWILIO_SID = os.getenv('TWILIO_SID')
+TWILIO_AUTH_TOKEN = os.getenv('TWILIO_AUTH_TOKEN')
+
+# Initialize Twilio client
+twilio_client = Client(TWILIO_SID, TWILIO_AUTH_TOKEN)
 
 # Initialize FastAPI application
 app = FastAPI()
@@ -93,24 +94,18 @@ if not OPENAI_API_KEY:
 # Initialize OpenAI client with API key
 openai_client = OpenAI(api_key=OPENAI_API_KEY)
 
-# Initialize the RAG retriever
-retriever = RAGRetriever(openai_client)
-
+# Health check endpoint, root route
 @app.get("/", response_class=JSONResponse)
 async def index_page():
     """Return a simple health check message for the server."""
     return {"message": "Twilio Media Stream Server is running!"}
 
+# Handle incoming call and return TwiML response to connect to Media Stream, entry point for Twilio
 @app.api_route("/incoming-call", methods=["GET", "POST"])
 async def handle_incoming_call(request: Request):
     """Handle incoming call and return TwiML response to connect to Media Stream."""
     # Initialize TwiML response object
-    response = VoiceResponse()
-    # <Say> punctuation to improve text-to-speech flow
-    # response.say("Please wait while we connect your call to the A. I. voice assistant, powered by Twilio and the Open-A.I. Realtime API")
-    # response.pause(length=1)
-    # response.say("O.K. you can start talking!")
-    
+    response = VoiceResponse()   
     # Get the host from the request URL
     host = request.url.hostname
     # Create a connection to the media stream
@@ -120,12 +115,16 @@ async def handle_incoming_call(request: Request):
     response.append(connect)
     return HTMLResponse(content=str(response), media_type="application/xml")
 
+# Handle WebSocket connections between Twilio and OpenAI, entry point for OpenAI and handles the conversation
 @app.websocket("/media-stream")
 async def handle_media_stream(websocket: WebSocket):
     """Handle WebSocket connections between Twilio and OpenAI."""
     print("Client connected")
     # Accept the WebSocket connection
     await websocket.accept()
+
+    # Add conversation transcript variable
+    conversation_transcript = []
 
     # Establish WebSocket connection to OpenAI's realtime API
     async with websockets.connect(
@@ -140,14 +139,17 @@ async def handle_media_stream(websocket: WebSocket):
 
         # Initialize connection state variables
         stream_sid = None  # Unique identifier for the stream
+        call_sid = None  # Add this variable
         latest_media_timestamp = 0  # Track the most recent media timestamp
         last_assistant_item = None  # Track the last assistant response
         mark_queue = []  # Queue for tracking response parts
         response_start_timestamp_twilio = None  # Track when responses start
+        end_call_triggered = False  # Track if the end call function has been triggered
         
+        # Receive audio data from Twilio and send it to the OpenAI Realtime API
         async def receive_from_twilio():
             """Receive audio data from Twilio and send it to the OpenAI Realtime API."""
-            nonlocal stream_sid, latest_media_timestamp
+            nonlocal stream_sid, latest_media_timestamp, call_sid, end_call_triggered  # Add call_sid to nonlocal
             try:
                 async for message in websocket.iter_text():
                     data = json.loads(message)
@@ -160,7 +162,8 @@ async def handle_media_stream(websocket: WebSocket):
                         await openai_ws.send(json.dumps(audio_append))
                     elif data['event'] == 'start':
                         stream_sid = data['start']['streamSid']
-                        print(f"Incoming stream has started {stream_sid}")
+                        call_sid = data['start']['callSid']
+                        print(f"Incoming stream has started {stream_sid} and call_sid {call_sid}")
                         response_start_timestamp_twilio = None
                         latest_media_timestamp = 0
                         last_assistant_item = None
@@ -168,7 +171,7 @@ async def handle_media_stream(websocket: WebSocket):
                         if mark_queue:
                             mark_queue.pop(0)
                     elif data['event'] == 'stop':
-                        print(f"Call ended, stream {stream_sid} stopped")
+                        await create_call_summary_ticket(conversation_transcript)
                         if openai_ws.open:
                             await openai_ws.close()
                         await websocket.close()
@@ -178,66 +181,94 @@ async def handle_media_stream(websocket: WebSocket):
                 if openai_ws.open:
                     await openai_ws.close()
 
+        # Send events to Twilio
         async def send_to_twilio():
             """Receive events from the OpenAI Realtime API, send audio back to Twilio."""
-            nonlocal stream_sid, last_assistant_item, response_start_timestamp_twilio
+            nonlocal stream_sid, last_assistant_item, response_start_timestamp_twilio, end_call_triggered
             try:
                 async for openai_message in openai_ws:
                     response = json.loads(openai_message)
-                    print(f"Received response: {response}")
 
+                    # Log the response type
+                    print(f"Received response: {response.get('type')}")
+
+                    # If the response is a user transcription, add it to the conversation transcript
                     if response.get('type') == 'conversation.item.input_audio_transcription.completed':
                         print(f"Received transcription: {response}")
-                        transcription_text = response.get('transcription')
+                        transcription_text = response.get('transcript')
                         if transcription_text:
+                            conversation_transcript.append({
+                                'role': 'User',
+                                'text': transcription_text
+                            })
                             print("User transcription:", transcription_text)
-                    #         # Retrieve relevant context based on the transcription
-                    #         relevant_info = await retriever.retrieve(transcription_text)
-                    #         # Inject this context into the conversation
-                    #         add_context_event = {
-                    #             "type": "conversation.item.create",
-                    #             "item": {
-                    #                 "type": "context",
-                    #                 "role": "system",
-                    #                 "content": relevant_info
-                    #             }
-                    #         }
-                    #         await openai_ws.send(json.dumps(add_context_event))
 
-                    if response['type'] in LOG_EVENT_TYPES:
-                        print(f"Received event: {response['type']}", response)
-
-                    if response.get('type') == 'response.content.done':
-                        print(f"Response content done: {response}")
-                        
-                    elif response.get('type') == 'response.done':
-                        print(f"Response done: {response}")
-                    elif response.get('type') == 'response.audio.delta':
-                        print(f"Response audio delta: {response}")
-                    
+                    # If the response is a help bot transcription, add it to the conversation transcript
                     if response.get('type') == 'response.audio_transcript.done':
-                        transcript = response.get('transcript')
-                        if "Thank you for calling Kayako's help center. Have a great day!" in transcript:
-                            print("Termination command detected. Ending call.")
-                            await asyncio.sleep(4)
-                            await websocket.close()
-                            if openai_ws.open:
-                                await openai_ws.close()
+                        transcription_text = response.get('transcript')
+                        if transcription_text:
+                            conversation_transcript.append({
+                                'role': 'Help Bot',
+                                'text': transcription_text
+                            })
+                            print("User transcription:", transcription_text)
+
+                        if "Thank you for calling Kayako's help center. Have a great day!" in transcription_text:
+                            print("Termination command detected. Marking call as ready to end.")
+                            end_call_triggered = True
+                            await asyncio.sleep(5)
+                            await end_call(call_sid)
                             return
 
-                    # Check for termination condition in the AI's response
-                    if response.get('type') == 'response.audio.delta' and 'delta' in response:
-                        # Decode the audio delta to check for termination command
-                        audio_payload = base64.b64encode(base64.b64decode(response['delta'])).decode('utf-8')
-                        # Here, you would decode the audio to text if possible, or check for a specific signal
-                        # For simplicity, let's assume we have a function `check_for_termination_command`
-                        # if check_for_termination_command(audio_payload):
-                        #     print("Termination command detected. Ending call.")
-                        #     await websocket.close()
-                        #     if openai_ws.open:
-                        #         await openai_ws.close()
-                        #     return
+                    # Ensure we have a function call event with all the necessary arguments
+                    if response.get("type") == "response.function_call_arguments.done":
+                        func_name = response.get("name")
+                        args_str = response.get("arguments", {})
+                        call_id = response.get("call_id")
+                        result = None
+                        print(f"Received function call: {func_name} with parameters: {args_str} and call_id: {call_id}")
+                        print(f"Received function call arguments: {response}")
 
+                        params = {}
+                        if isinstance(args_str, str):
+                            params = json.loads(args_str)
+                        else:
+                            params = args_str
+                        print(params)
+                    # if response.get("type") == "conversation.item.created" and response["item"].get("type") == "function_call":
+                    #     func_name = response["item"].get("name")
+                    #     params = response["item"].get("parameters", {})
+                    #     call_id = response["item"].get("call_id")
+                    #     result = None
+                    #     print(f"Received function call: {func_name} with parameters: {params} and call_id: {call_id}")
+                    #     # print(f"Weather Conversation item created response: {response}")
+
+                        # Inspect the function name and call the corresponding function.
+                        if func_name == "get_weather":
+                            location = params.get("location")
+                            units = params.get("units")
+                            result = get_weather(location, units)
+                        else:
+                            result = {"error": "Unknown function"}
+
+                        # Prepare a function call output event to send back to OpenAI.
+                        response_event = {
+                            "type": "conversation.item.create",
+                            "item": {
+                                "type": "function_call_output",
+                                "call_id": call_id,  # This associates the output with the original call.
+                                "output": json.dumps(result)
+                            }
+                        }
+
+                        # Send the response event back through your WebSocket.
+                        await openai_ws.send(json.dumps(response_event))
+
+                        # Trigger response generation
+                        await openai_ws.send(json.dumps({"type": "response.create"}))
+
+                    if response.get('type') == 'response.audio.delta' and 'delta' in response:
+                        audio_payload = base64.b64encode(base64.b64decode(response['delta'])).decode('utf-8')
                         audio_delta = {
                             "event": "media",
                             "streamSid": stream_sid,
@@ -259,7 +290,8 @@ async def handle_media_stream(websocket: WebSocket):
                         await send_mark(websocket, stream_sid)
 
                     # Trigger an interruption. Your use case might work better using `input_audio_buffer.speech_stopped`, or combining the two.
-                    if response.get('type') == 'input_audio_buffer.speech_started':
+                    # Only trigger interruptions if the call is not ready to end
+                    if response.get('type') == 'input_audio_buffer.speech_started' and not end_call_triggered:
                         print("Speech started detected.")
                         if last_assistant_item:
                             print(f"Interrupting response with id: {last_assistant_item}")
@@ -267,6 +299,7 @@ async def handle_media_stream(websocket: WebSocket):
             except Exception as e:
                 print(f"Error in send_to_twilio: {e}")
 
+        # Handle interruption when the caller's speech starts
         async def handle_speech_started_event():
             """Handle interruption when the caller's speech starts."""
             nonlocal response_start_timestamp_twilio, last_assistant_item
@@ -297,6 +330,7 @@ async def handle_media_stream(websocket: WebSocket):
                 last_assistant_item = None
                 response_start_timestamp_twilio = None
 
+        # Send a mark event to Twilio to indicate the start of a new response
         async def send_mark(connection, stream_sid):
             if stream_sid:
                 mark_event = {
@@ -307,17 +341,11 @@ async def handle_media_stream(websocket: WebSocket):
                 await connection.send_json(mark_event)
                 mark_queue.append('responsePart')
 
+        # Run the receive and send functions concurrently
         await asyncio.gather(receive_from_twilio(), send_to_twilio())
 
-def check_for_termination_command(audio_payload):
-    # Implement logic to decode audio and check for termination command
-    # This is a placeholder function
-    # You might need to use a speech-to-text service to decode the audio
-    # and then check if the text contains a termination command
-    return False
-
+# Send initial conversation item
 async def send_initial_conversation_item(openai_ws):
-    """Send initial conversation item if AI talks first."""
     # Create the initial greeting message
     initial_conversation_item = {
         "type": "conversation.item.create",
@@ -337,7 +365,7 @@ async def send_initial_conversation_item(openai_ws):
     # Trigger response generation
     await openai_ws.send(json.dumps({"type": "response.create"}))
 
-
+# Initialize the session with OpenAI
 async def initialize_session(openai_ws):
     """Control initial session with OpenAI."""
     # Configure session parameters including VAD settings
@@ -346,11 +374,7 @@ async def initialize_session(openai_ws):
         "session": {
             "turn_detection": {
                 "type": "server_vad",
-                # "mode": "quality",  # Use quality mode for better noise filtering
-                "threshold": 0.7,   # Higher threshold means less sensitive to background noise (default is 0.5)
-                # "min_speech_duration_ms": 200,  # Minimum duration to consider something as speech
-                # "min_silence_duration_ms": 500,  # Wait longer before considering speech as ended
-                # "speech_pad_ms": 400  # Add padding to avoid cutting off speech too early
+                "threshold": 0.5,   # Higher threshold means less sensitive to background noise (default is 0.8)
             },
             "input_audio_format": "g711_ulaw",
             "output_audio_format": "g711_ulaw",
@@ -361,6 +385,28 @@ async def initialize_session(openai_ws):
             "instructions": SYSTEM_MESSAGE,
             "modalities": ["text", "audio"],
             "temperature": 0.8,
+            "tools": [
+                {
+                    "type": "function",
+                    "name": "get_weather",
+                    "description": "Fetches the current weather for a given location. Use this function when the user asks for weather updates.",
+                    "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "location": {
+                        "type": "string",
+                        "description": "The city or region to retrieve the weather for."
+                        },
+                        "units": {
+                        "type": "string",
+                        "enum": ["metric", "imperial"],
+                        "description": "Unit system for temperature (metric for Celsius, imperial for Fahrenheit)."
+                        }
+                    },
+                    "required": ["location", "units"]
+                    }
+                }
+            ]
         }
     }
     # Log and send session configuration
@@ -369,6 +415,105 @@ async def initialize_session(openai_ws):
 
     # Initialize the conversation with a greeting
     await send_initial_conversation_item(openai_ws)
+
+# Get weather information for a given location
+def get_weather(location, units):
+    # Your custom logic to fetch weather information for the given location.
+    # For demonstration, we'll return a dummy result.
+    print(f"Fetching weather for {location} in {units} units")
+    return {
+        "temperature": 22,
+        "description": "Partly cloudy",
+        "units": units,
+        "location": location
+    }
+
+# End a Twilio call using the REST API
+async def end_call(call_sid):
+    """End a Twilio call using the REST API."""
+    try:
+        twilio_client.calls(call_sid).update(status='completed')
+        print(f"Successfully ended call {call_sid}")
+    except Exception as e:
+        print(f"Error ending call: {e}")
+
+# Create a call summary ticket
+async def create_call_summary_ticket(transcript):
+    # Format transcript into a string with new line separation
+    print("\n=== Full Conversation Transcript ===")
+    formatted_transcript = ""
+    for entry in transcript:
+        print(f"{entry['role']}: {entry['text']}")
+        formatted_transcript += f"{entry['role']}: {entry['text']}\n"
+    print("================================\n")
+
+    # API endpoint with query parameters
+    url = f"{KAYAKO_API_URL}?include=channel,last_public_channel,mailbox,facebook_page,facebook_account,twitter_account,user,organization,sla_metric,sla_version_target,sla_version,identity_email,identity_domain,identity_facebook,identity_twitter,identity_phone,case_field,read_marker"
+
+    # Create data payload
+    data = {
+        "field_values": {
+            "product": "80"
+        },
+        "status_id": "1",
+        "attachment_file_ids": "",
+        "tags": "gauntlet-ai",
+        "type_id": 7,
+        "channel": "MAIL",
+        "subject": "[GAUNTLET AI TEST] Call Summary - Johnny Test Email",
+        "contents": f"""<div style="font-family: Arial, sans-serif; line-height: 1.6;">
+            <div style="margin-bottom: 20px; background-color: #f6f8fa; padding: 15px; border-radius: 4px; border-left: 4px solid #0366d6;">
+                <strong>📋 SUBJECT</strong><br>
+                <p style="margin-top: 10px; margin-bottom: 0; font-size: 16px;">Kayako Help Center Call</p>
+            </div>
+
+            <div style="margin-bottom: 20px; background-color: #f6f8fa; padding: 15px; border-radius: 4px; border-left: 4px solid #0366d6;">
+                <strong>📝 SUMMARY</strong><br>
+                <p style="margin-top: 10px; margin-bottom: 0;">Call assistance with Kayako help center.</p>
+            </div>
+
+            <div style="margin-bottom: 20px; background-color: #f6f8fa; padding: 15px; border-radius: 4px; border-left: 4px solid #0366d6;">
+                <strong>📞 CALL TRANSCRIPT</strong><br>
+                <pre style="background: #f5f5f5; padding: 15px; border-radius: 4px; margin: 10px 0; white-space: pre-wrap; font-family: monospace;">
+{formatted_transcript}
+                </pre>
+            </div>
+        </div>""",
+        "assigned_agent_id": "309",
+        "form_id": "1",
+        "assigned_team_id": "1",
+        "requester_id": "309",
+        "channel_id": "1",
+        "priority_id": "1",
+        "channel_options": {
+            "cc": [],
+            "html": True
+        }
+    }
+
+    # Encode credentials for Basic Auth
+    auth_string = f"{KAYAKO_API_USERNAME}:{KAYAKO_API_PASSWORD}"
+    encoded_auth = base64.b64encode(auth_string.encode()).decode()
+
+    # Set headers
+    headers = {
+        "Content-Type": "application/json; charset=UTF-8",
+        "Authorization": f"Basic {encoded_auth}"
+    }
+
+    try:
+        # Make the POST request
+        response = requests.post(url, headers=headers, data=json.dumps(data))
+
+        # Check if request was successful
+        response.raise_for_status()
+
+        # Parse and print the JSON response
+        result = response.json()
+        print(json.dumps(result, indent=2))
+
+    except requests.exceptions.RequestException as e:
+        print(f"Error: {e}")
 
 # Start the server if running as main script
 if __name__ == "__main__":
