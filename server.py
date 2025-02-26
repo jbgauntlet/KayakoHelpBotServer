@@ -505,42 +505,78 @@ async def create_call_summary_ticket(transcript, call_sid=None):
                 print(f"Converting audio for call {call_sid}...")
                 
                 try:
-                    # Python-based audio conversion instead of ffmpeg
-                    import wave
-                    import numpy as np
+                    # Use ffmpeg for better audio conversion with enhancements
+                    import subprocess
+                    
+                    # Command to convert .ulaw to .wav with audio enhancements:
+                    # - Proper u-law to PCM conversion
+                    # - Bandpass filter for speech frequencies (300-3400 Hz)
+                    # - Equalization to enhance speech clarity
+                    # - Volume normalization
+                    ffmpeg_cmd = [
+                        'ffmpeg',
+                        '-y',  # Overwrite output file if it exists
+                        '-f', 'mulaw',  # Input format
+                        '-ar', '8000',  # Input sample rate
+                        '-ac', '1',     # Input channels (mono)
+                        '-i', ulaw_path,  # Input file
+                        '-af', 'highpass=f=200,lowpass=f=3500,equalizer=f=1000:width_type=h:width=200:g=4,loudnorm',  # Audio filters
+                        '-ar', '16000',  # Increased output sample rate
+                        '-ac', '1',      # Output channels (mono)
+                        '-acodec', 'pcm_s16le',  # Output codec (16-bit PCM)
+                        wav_path  # Output file
+                    ]
+                    
+                    # Run ffmpeg command
+                    process = subprocess.run(
+                        ffmpeg_cmd,
+                        capture_output=True,
+                        text=True
+                    )
+                    
+                    # Check if conversion was successful
+                    if process.returncode == 0:
+                        print(f"Successfully converted audio to {wav_path} with enhanced quality")
+                    else:
+                        print(f"FFmpeg audio conversion failed: {process.stderr}")
+                        print("Falling back to Python-based conversion")
+                        
+                        # Fall back to Python-based conversion if ffmpeg fails
+                        import wave
+                        import numpy as np
 
-                    # Function to convert u-law to linear PCM
-                    def ulaw2linear(u_law_data):
-                        # u-law decoding table
-                        u = 255
-                        u_law_data = np.frombuffer(u_law_data, dtype=np.uint8)
-                        # Convert to signed integers
-                        sign = np.where(u_law_data < 128, 1, -1)
-                        # Remove sign bit
-                        u_law_data = np.where(u_law_data < 128, u_law_data, 255 - u_law_data)
-                        # Decode using u-law formula
-                        linear_data = sign * (((u_law_data / u) ** (1/1.5)) * (2**15 - 1))
-                        return linear_data.astype(np.int16)
-                    
-                    # Read u-law data
-                    with open(ulaw_path, 'rb') as f:
-                        u_law_data = f.read()
-                    
-                    # Convert to linear PCM
-                    linear_data = ulaw2linear(u_law_data)
-                    
-                    # Create WAV file
-                    with wave.open(wav_path, 'wb') as wav_file:
-                        wav_file.setnchannels(1)  # Mono
-                        wav_file.setsampwidth(2)  # 2 bytes (16 bits) per sample
-                        wav_file.setframerate(8000)  # 8 kHz sampling rate for u-law
-                        wav_file.writeframes(linear_data.tobytes())
-                    
-                    print(f"Successfully converted audio to {wav_path}")
+                        # Function to convert u-law to linear PCM
+                        def ulaw2linear(u_law_data):
+                            # u-law decoding table
+                            u = 255
+                            u_law_data = np.frombuffer(u_law_data, dtype=np.uint8)
+                            # Convert to signed integers
+                            sign = np.where(u_law_data < 128, 1, -1)
+                            # Remove sign bit
+                            u_law_data = np.where(u_law_data < 128, u_law_data, 255 - u_law_data)
+                            # Decode using u-law formula
+                            linear_data = sign * (((u_law_data / u) ** (1/1.5)) * (2**15 - 1))
+                            return linear_data.astype(np.int16)
+                        
+                        # Read u-law data
+                        with open(ulaw_path, 'rb') as f:
+                            u_law_data = f.read()
+                        
+                        # Convert to linear PCM
+                        linear_data = ulaw2linear(u_law_data)
+                        
+                        # Create WAV file
+                        with wave.open(wav_path, 'wb') as wav_file:
+                            wav_file.setnchannels(1)  # Mono
+                            wav_file.setsampwidth(2)  # 2 bytes (16 bits) per sample
+                            wav_file.setframerate(8000)  # 8 kHz sampling rate for u-law
+                            wav_file.writeframes(linear_data.tobytes())
+                        
+                        print(f"Successfully converted audio to {wav_path} using fallback method")
                 except Exception as e:
                     print(f"Audio conversion failed: {e}")
                     # Fallback message
-                    print("Consider installing ffmpeg for better audio conversion support")
+                    print("Consider checking ffmpeg installation if this error persists")
                     wav_path = None
             else:
                 print(f"No audio file found at {ulaw_path}")
