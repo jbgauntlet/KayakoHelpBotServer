@@ -69,6 +69,7 @@ Evaluate the provided documentation:
 - If the user asks to speak to a agent or accepts the offer to speak to a agent, accept the request and use the connect_customer_to_agent function to connect the customer to an agent.
 - If the user's question is related to Kayako but you cannot answer it based on the documentation, offer to connect them to a human agent.
 - For any tool call, make sure to ask the user for parameters if needed. And if added clarity is needed, ask for more information.
+- If the transcript is ever empty, prompt the user again with "I'm sorry, I didn't catch that. Could you please repeat that again?"
 
 When providing instructions:
 - Convert any technical steps into natural spoken language
@@ -293,7 +294,8 @@ async def handle_media_stream(websocket: WebSocket):
                                 email = params.get("email", "")
                                 subject = params.get("subject", "")
                                 description = params.get("description", "")
-                                result = create_custom_support_ticket(name, email, subject, description, conversation_transcript)
+                                priority = params.get("priority", 1)
+                                result = create_custom_support_ticket(name, email, subject, description, priority, conversation_transcript)
                             elif func_name == "get_article_search_results":
                                 query = params.get("query", "")
                                 result = get_article_search_results(query)
@@ -475,7 +477,10 @@ async def initialize_session(openai_ws):
                 {
                     "type": "function",
                     "name": "create_custom_support_ticket",
-                    "description": "Creates a custom support ticket for the customer.",
+                    "description": """Creates a custom support ticket for the customer.
+                                      You come up with the subject and description of the ticket based on the what the user has said previously.
+                                      If the user has not specified any details, and only asked for an agent then Prompt the user to share what their issue is so that you can create a ticket.
+                                      Based on the user's issue determine the priority of the ticket and set the priority to 1, 2, 3 or 4 where 4 is the highest priority and 1 is the lowest.""",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -494,9 +499,13 @@ async def initialize_session(openai_ws):
                             "description": {
                                 "type": "string",
                                 "description": "Summary of the user's request."
+                            },
+                            "priority": {
+                                "type": "integer",
+                                "description": "The priority of the support ticket."
                             }
                         },
-                        "required": ["name", "email", "subject", "description"]
+                        "required": ["name", "email", "subject", "description", "priority"]
                     }
                 },
                 {

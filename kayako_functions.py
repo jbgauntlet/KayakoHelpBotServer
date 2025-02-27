@@ -65,7 +65,7 @@ def create_article_search_results_request(query):
         return None
 
 
-def create_custom_support_ticket_request(name, email, subject, description, transcript=None):
+def create_custom_support_ticket_request(name, email, subject, description, priority, transcript=None):
     """
     Create a new support ticket in the Kayako system via the API.
     
@@ -77,6 +77,7 @@ def create_custom_support_ticket_request(name, email, subject, description, tran
         email (str): Customer's email for notifications and identification
         subject (str): Brief description of the issue for the ticket title
         description (str): Detailed explanation of the customer's problem
+        priority (int): Priority level of the ticket (1=Low, 2=Normal, 3=High, 4=Urgent)
         transcript (list, optional): List of conversation entries, each with 'role' and 'text' keys
         
     Returns:
@@ -98,11 +99,86 @@ def create_custom_support_ticket_request(name, email, subject, description, tran
     # API endpoint for case creation
     url = f"{KAYAKO_API_URL}/cases"
 
-    # Create data payload according to API documentation
-    # HTML formatting is used to improve readability in the Kayako interface
-    data = {
-        "subject": f"[GAUNTLET AI TEST] Customer Support Ticket - {subject}",
-        "contents": f"""<div style="font-family: Arial, sans-serif; line-height: 1.6;">
+    # Generate individual transcript items with styling
+    transcript_html = ""
+    if transcript:
+        for entry in transcript:
+            role = entry['role']
+            text = entry['text']
+            
+            # Style differently based on role
+            if role.lower() in ['user', 'customer']:
+                # Customer styling (purple background)
+                transcript_html += f"""
+                <div style="margin-bottom: 10px; padding: 8px; background-color: #f3e5f5; border-radius: 4px;">
+                    <span style="color: #805ad5; font-weight: bold;">
+                        Customer:
+                    </span>
+                    <span>
+                        {text}
+                    </span>
+                </div>
+                """
+            else:
+                # Agent styling (blue background)
+                transcript_html += f"""
+                <div style="margin-bottom: 10px; padding: 8px; background-color: #e3f2fd; border-radius: 4px;">
+                    <span style="color: #2c5282; font-weight: bold;">
+                        Agent:
+                    </span>
+                    <span>
+                        {text}
+                    </span>
+                </div>
+                """
+    
+    # Set priority display based on priority level
+    priority_level = int(priority) if isinstance(priority, (int, str)) and str(priority).isdigit() else 1
+    
+    # Define styling and text for each priority level
+    priority_styles = {
+        1: {
+            "bg_color": "#e6ffed",  # Light green
+            "border_color": "#28a745",  # Green
+            "text": "LOW",
+            "description": "Will be handled when higher priorities are addressed"
+        },
+        2: {
+            "bg_color": "#f1f8ff",  # Light blue
+            "border_color": "#0366d6",  # Blue
+            "text": "NORMAL",
+            "description": "Standard response time expected"
+        },
+        3: {
+            "bg_color": "#fff8c5",  # Light yellow
+            "border_color": "#f9c513",  # Yellow
+            "text": "HIGH",
+            "description": "Should be addressed soon"
+        },
+        4: {
+            "bg_color": "#ffeef0",  # Light red
+            "border_color": "#d73a49",  # Red
+            "text": "URGENT",
+            "description": "Requires immediate attention"
+        }
+    }
+    
+    # Get the style for the given priority level (default to level 1 if invalid)
+    style = priority_styles.get(priority_level, priority_styles[1])
+    
+    # Generate priority HTML section with appropriate styling
+    priority_html = f"""
+    <div style="margin-bottom: 20px; background-color: {style['bg_color']}; border-left: 4px solid {style['border_color']}; padding: 15px; border-radius: 4px;">
+        <strong>🔔 PRIORITY: {style['text']}</strong><br>
+        <p style="margin-top: 10px; margin-bottom: 0;">
+            {style['description']}
+        </p>
+    </div>
+    """
+
+    # Create enhanced HTML content following sample.html format
+    html_content = f"""
+        <div style="font-family: Arial, sans-serif; line-height: 1.6;">
 
             <div style="margin-bottom: 20px; background-color: #f6f8fa; padding: 15px; border-radius: 4px; border-left: 4px solid #0366d6;">
                 <strong>📋 USER DETAILS</strong><br>
@@ -112,7 +188,7 @@ def create_custom_support_ticket_request(name, email, subject, description, tran
             
             <div style="margin-bottom: 20px; background-color: #f6f8fa; padding: 15px; border-radius: 4px; border-left: 4px solid #0366d6;">
                 <strong>📋 SUBJECT</strong><br>
-                <p style="margin-top: 10px; margin-bottom: 0; font-size: 16px;">Kayako Help Center Call</p>
+                <p style="margin-top: 10px; margin-bottom: 0; font-size: 16px;">{subject}</p>
             </div>
             
             <div style="margin-bottom: 20px; background-color: #f6f8fa; padding: 15px; border-radius: 4px; border-left: 4px solid #0366d6;">
@@ -120,13 +196,22 @@ def create_custom_support_ticket_request(name, email, subject, description, tran
                 <p style="margin-top: 10px; margin-bottom: 0;">{description}</p>
             </div>
 
-            <div style="margin-bottom: 20px; background-color: #f6f8fa; padding: 15px; border-radius: 4px; border-left: 4px solid #0366d6;">
+            {priority_html}
+
+            <div style="margin-bottom: 20px;">
                 <strong>📞 CALL TRANSCRIPT</strong><br>
-                <pre style="background: #f5f5f5; padding: 15px; border-radius: 4px; margin: 10px 0; white-space: pre-wrap; font-family: monospace;">
-                    {formatted_transcript}
-                </pre>
+                <div style="background: #f5f5f5; padding: 15px; border-radius: 4px; margin: 10px 0; max-height: 400px; overflow-y: auto;">
+                    {transcript_html}
+                </div>
             </div>
-        </div>""",
+
+        </div>"""
+
+    # Create data payload according to API documentation
+    # HTML formatting is used to improve readability in the Kayako interface
+    data = {
+        "subject": f"[GAUNTLET AI TEST] Customer Support Ticket - {subject}",
+        "contents": html_content,
         "channel": "MAIL",
         "channel_id": "1",
         "tags": "gauntlet-ai",
@@ -200,6 +285,56 @@ async def create_call_summary_ticket(transcript, call_sid=None):
     ulaw_path = paths[0]
     wav_path = paths[1]
 
+    # Generate individual transcript items with styling
+    transcript_html = ""
+    if transcript:
+        for entry in transcript:
+            role = entry['role']
+            text = entry['text']
+            
+            # Style differently based on role
+            if role.lower() in ['user', 'customer']:
+                # Customer styling (purple background)
+                transcript_html += f"""
+                <div style="margin-bottom: 10px; padding: 8px; background-color: #f3e5f5; border-radius: 4px;">
+                    <span style="color: #805ad5; font-weight: bold;">
+                        Customer:
+                    </span>
+                    <span>
+                        {text}
+                    </span>
+                </div>
+                """
+            else:
+                # Agent styling (blue background)
+                transcript_html += f"""
+                <div style="margin-bottom: 10px; padding: 8px; background-color: #e3f2fd; border-radius: 4px;">
+                    <span style="color: #2c5282; font-weight: bold;">
+                        Agent:
+                    </span>
+                    <span>
+                        {text}
+                    </span>
+                </div>
+                """
+                
+    # Define priority styling - using priority level 1 (LOW) for call summaries
+    priority_style = {
+        "bg_color": "#e6ffed",  # Light green
+        "border_color": "#28a745",  # Green
+        "text": "LOW",
+        "description": "Routine call summary for review"
+    }
+    
+    # Generate priority HTML section
+    priority_html = f"""
+    <div style="margin-bottom: 20px; background-color: {priority_style['bg_color']}; border-left: 4px solid {priority_style['border_color']}; padding: 15px; border-radius: 4px;">
+        <strong>🔔 PRIORITY: {priority_style['text']}</strong><br>
+        <p style="margin-top: 10px; margin-bottom: 0;">
+            {priority_style['description']}
+        </p>
+    </div>
+    """
 
     # Define the Kayako API endpoint for case creation
     url = f"{KAYAKO_API_URL}/cases"
@@ -208,7 +343,8 @@ async def create_call_summary_ticket(transcript, call_sid=None):
     # This uses styled HTML to improve readability in the Kayako interface
     data = {
         "subject": f"[GAUNTLET AI TEST] Call Summary - Call {call_sid}",
-        "contents": f"""<div style="font-family: Arial, sans-serif; line-height: 1.6;">
+        "contents": f"""
+        <div style="font-family: Arial, sans-serif; line-height: 1.6;">
             <div style="margin-bottom: 20px; background-color: #f6f8fa; padding: 15px; border-radius: 4px; border-left: 4px solid #0366d6;">
                 <strong>📋 SUBJECT</strong><br>
                 <p style="margin-top: 10px; margin-bottom: 0; font-size: 16px;">Kayako Help Center Call</p>
@@ -218,12 +354,14 @@ async def create_call_summary_ticket(transcript, call_sid=None):
                 <strong>📝 SUMMARY</strong><br>
                 <p style="margin-top: 10px; margin-bottom: 0;">Call assistance with Kayako help center.</p>
             </div>
+            
+            {priority_html}
 
-            <div style="margin-bottom: 20px; background-color: #f6f8fa; padding: 15px; border-radius: 4px; border-left: 4px solid #0366d6;">
+            <div style="margin-bottom: 20px;">
                 <strong>📞 CALL TRANSCRIPT</strong><br>
-                <pre style="background: #f5f5f5; padding: 15px; border-radius: 4px; margin: 10px 0; white-space: pre-wrap; font-family: monospace;">
-{formatted_transcript}
-                </pre>
+                <div style="background: #f5f5f5; padding: 15px; border-radius: 4px; margin: 10px 0; max-height: 400px; overflow-y: auto;">
+                    {transcript_html}
+                </div>
             </div>
         </div>""",
         "channel": "MAIL",

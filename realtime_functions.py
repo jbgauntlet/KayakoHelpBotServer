@@ -54,7 +54,7 @@ def connect_customer_to_agent(name, email, call_sid, twilio_client):
     """
 
     # 50/50 dice roll to determine if an agent is available
-    is_agent_available = True # random.choice([True, False])
+    is_agent_available = False # random.choice([True, False])
     
     # Log the availability check for monitoring
     print(f"Agent availability check for {name} ({email}): {'Available' if is_agent_available else 'Unavailable'}")
@@ -77,7 +77,7 @@ def connect_customer_to_agent(name, email, call_sid, twilio_client):
         }
 
 
-def create_custom_support_ticket(name, email, subject, description, transcript=None):
+def create_custom_support_ticket(name, email, subject, description, priority, transcript=None):
     """
     Create a custom support ticket in the Kayako system.
     
@@ -89,6 +89,7 @@ def create_custom_support_ticket(name, email, subject, description, transcript=N
         email (str): Customer's email for notifications and identification
         subject (str): Brief description of the customer's issue
         description (str): Detailed explanation of the customer's problem
+        priority (int): The priority of the support ticket
         transcript (list, optional): List of conversation exchanges between the bot and customer
         
     Returns:
@@ -96,7 +97,7 @@ def create_custom_support_ticket(name, email, subject, description, transcript=N
             - status: "success" or "error"
             - message: Description of the outcome
     """
-    is_ticket_created = create_custom_support_ticket_request(name, email, subject, description, transcript)
+    is_ticket_created = create_custom_support_ticket_request(name, email, subject, description, priority, transcript)
     if is_ticket_created:
         return {
             "status": "success",
