@@ -1,6 +1,7 @@
 import os
 from dotenv import load_dotenv
 import requests
+from openai import OpenAI
 
 from utility_functions import cleanup_files, convert_call_audio_to_wav
 
@@ -11,6 +12,10 @@ load_dotenv()
 KAYAKO_API_USERNAME = os.getenv('KAYAKO_API_USERNAME')  # Username for Kayako API authentication
 KAYAKO_API_PASSWORD = os.getenv('KAYAKO_API_PASSWORD')  # Password for Kayako API authentication
 KAYAKO_API_URL = os.getenv('KAYAKO_API_URL')            # Base URL for all Kayako API endpoints
+OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')            # OpenAI API key for transcript analysis
+
+# Initialize OpenAI client
+openai_client = OpenAI(api_key=OPENAI_API_KEY)
 
 
 def create_article_search_results_request(query):
@@ -281,6 +286,51 @@ async def create_call_summary_ticket(transcript, call_sid=None):
         formatted_transcript += f"{entry['role']}: {entry['text']}\n"
     print("================================\n")
 
+    # Use OpenAI to analyze the transcript
+    try:
+        analysis_response = openai_client.chat.completions.create(
+            model="gpt-3.5-turbo",  # Most cost-effective model with JSON capabilities
+            messages=[
+                {
+                    "role": "system", 
+                    "content": """Analyze this customer support call transcript and provide the following in JSON format:
+                    1. subject: A concise, informative subject line (max 10 words)
+                    2. description: A comprehensive summary of the customer's issue (2-3 sentences)
+                    3. resolution: What was resolved or what next steps were agreed upon (1-2 sentences)
+                    4. areas_for_improvement: Identify 1-3 ways the customer service could be improved in this interaction
+                    
+                    Format your response as a valid JSON object with these four keys.
+                    """
+                },
+                {"role": "user", "content": formatted_transcript}
+            ],
+            response_format={"type": "json_object"}
+        )
+        
+        # Extract the analysis
+        analysis = analysis_response.choices[0].message.content
+        
+        # Parse the JSON response
+        import json
+        analysis_data = json.loads(analysis)
+        
+        # Use the analyzed data
+        subject = analysis_data.get("subject", "Call Summary")
+        description = analysis_data.get("description", "Customer support interaction")
+        resolution = analysis_data.get("resolution", "")
+        improvements = analysis_data.get("areas_for_improvement", [])
+        
+        print(f"AI Analysis - Subject: {subject}")
+        print(f"AI Analysis - Description: {description}")
+        
+    except Exception as e:
+        print(f"Error analyzing transcript with OpenAI: {e}")
+        # Fallback to the original method
+        subject = "Call Summary"
+        description = "Customer support interaction"
+        resolution = ""
+        improvements = []
+
     paths = convert_call_audio_to_wav(call_sid)
     ulaw_path = paths[0]
     wav_path = paths[1]
@@ -335,6 +385,34 @@ async def create_call_summary_ticket(transcript, call_sid=None):
         </p>
     </div>
     """
+    
+    # Create resolution and improvement sections if available
+    resolution_html = ""
+    if resolution:
+        resolution_html = f"""
+        <div style="margin-bottom: 20px; background-color: #f6f8fa; padding: 15px; border-radius: 4px; border-left: 4px solid #0366d6;">
+            <strong>✅ RESOLUTION</strong><br>
+            <p style="margin-top: 10px; margin-bottom: 0;">{resolution}</p>
+        </div>
+        """
+    
+    improvements_html = ""
+    if improvements:
+        improvements_content = ""
+        if isinstance(improvements, list):
+            for item in improvements:
+                improvements_content += f"<li>{item}</li>"
+        else:
+            improvements_content = f"<p>{improvements}</p>"
+            
+        improvements_html = f"""
+        <div style="margin-bottom: 20px; background-color: #f6f8fa; padding: 15px; border-radius: 4px; border-left: 4px solid #e36209;">
+            <strong>🔍 AREAS FOR IMPROVEMENT</strong><br>
+            <ul style="margin-top: 10px; margin-bottom: 0;">
+                {improvements_content}
+            </ul>
+        </div>
+        """
 
     # Define the Kayako API endpoint for case creation
     url = f"{KAYAKO_API_URL}/cases"
@@ -347,13 +425,17 @@ async def create_call_summary_ticket(transcript, call_sid=None):
         <div style="font-family: Arial, sans-serif; line-height: 1.6;">
             <div style="margin-bottom: 20px; background-color: #f6f8fa; padding: 15px; border-radius: 4px; border-left: 4px solid #0366d6;">
                 <strong>📋 SUBJECT</strong><br>
-                <p style="margin-top: 10px; margin-bottom: 0; font-size: 16px;">Kayako Help Center Call</p>
+                <p style="margin-top: 10px; margin-bottom: 0; font-size: 16px;">{subject}</p>
             </div>
 
             <div style="margin-bottom: 20px; background-color: #f6f8fa; padding: 15px; border-radius: 4px; border-left: 4px solid #0366d6;">
                 <strong>📝 SUMMARY</strong><br>
-                <p style="margin-top: 10px; margin-bottom: 0;">Call assistance with Kayako help center.</p>
+                <p style="margin-top: 10px; margin-bottom: 0;">{description}</p>
             </div>
+            
+            {resolution_html}
+            
+            {improvements_html}
             
             {priority_html}
 

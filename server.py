@@ -255,7 +255,7 @@ async def handle_media_stream(websocket: WebSocket):
                         if "Thank you for calling Kayako's help center. Have a great day!" in transcription_text:
                             print("Termination command detected. Marking call as ready to end.")
                             end_call_triggered = True
-                            await asyncio.sleep(5)
+                            await asyncio.sleep(4) # Wait for 4 seconds to ensure the message is not interrupted
                             await end_call(call_sid, twilio_client)
                             return
 
