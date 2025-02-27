@@ -502,7 +502,8 @@ async def initialize_session(openai_ws):
                 {
                     "type": "function",
                     "name": "get_article_search_results",
-                    "description": "Searches for articles in Kayako and returns the results.",
+                    "description": """Searches for articles in Kayako and returns the results.
+                                      Should be called on every user query if there is relevant information.""",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -524,24 +525,46 @@ async def initialize_session(openai_ws):
     # Initialize the conversation with a greeting
     await send_initial_conversation_item(openai_ws)
 
-
-
-
-
 @app.api_route("/redirect-to-agent", methods=["POST"])
 async def redirect_to_agent(request: Request):
-    """Return TwiML to connect the call to a human agent."""
-    # Create TwiML response
+    """
+    Handle call redirection to a human agent.
+    
+    This endpoint generates TwiML to smoothly transition the customer from the AI assistant
+    to a human agent. It's called by Twilio when a call redirection is initiated.
+    
+    The endpoint performs the following:
+    1. Creates a TwiML response with a transitional message for the customer
+    2. Dials out to the agent's phone number (configured in environment variables)
+    3. Returns the TwiML for Twilio to execute
+    
+    Args:
+        request (Request): The FastAPI request object containing information about the call
+        
+    Returns:
+        Response: A FastAPI response containing TwiML instructions for Twilio
+        
+    Note:
+        The REDIRECT_PHONE_NUMBER must be properly configured in the environment 
+        variables for the agent connection to succeed.
+    """
+    # Create TwiML response object for Twilio to execute
     response = VoiceResponse()
     
-    # You could add a message before transferring
+    # Add a message explaining the transfer to improve customer experience
+    # This message is spoken to the caller while the transfer is being set up
     response.say("Transferring you to an available agent. Please hold.")
     
-    # Dial the agent's number or SIP address
+    # Retrieve the destination phone number from environment variables
+    # This could be a direct line, call center number, or SIP address
     REDIRECT_PHONE_NUMBER = os.getenv('REDIRECT_PHONE_NUMBER')
+    
+    # Dial instruction initiates the outbound call to the agent
+    # When answered, the customer's call will be connected to this new call
     response.dial(REDIRECT_PHONE_NUMBER)
     
-    # Return the TwiML as a string with proper FastAPI Response
+    # Return the TwiML response with proper content type
+    # Twilio requires XML format with specific content-type header
     return Response(content=str(response), media_type="text/xml")
 
 # Start the server if running as main script

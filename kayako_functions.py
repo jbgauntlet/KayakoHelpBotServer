@@ -2,16 +2,35 @@ import os
 from dotenv import load_dotenv
 import requests
 
-from utility_functions import cleanup_files
+from utility_functions import cleanup_files, convert_call_audio_to_wav
 
+# Load environment variables from .env file
 load_dotenv()
-KAYAKO_API_USERNAME = os.getenv('KAYAKO_API_USERNAME')
-KAYAKO_API_PASSWORD = os.getenv('KAYAKO_API_PASSWORD')
-KAYAKO_API_URL = os.getenv('KAYAKO_API_URL')
+
+# Extract Kayako API credentials from environment variables
+KAYAKO_API_USERNAME = os.getenv('KAYAKO_API_USERNAME')  # Username for Kayako API authentication
+KAYAKO_API_PASSWORD = os.getenv('KAYAKO_API_PASSWORD')  # Password for Kayako API authentication
+KAYAKO_API_URL = os.getenv('KAYAKO_API_URL')            # Base URL for all Kayako API endpoints
 
 
 def create_article_search_results_request(query):
-    """Make the API request to search for articles."""
+    """
+    Perform a search for knowledge base articles in Kayako using the API.
+    
+    This function sends a POST request to the Kayako search API endpoint
+    to find articles that match the provided query string.
+    
+    Args:
+        query (str): The search query text to find relevant knowledge base articles
+        
+    Returns:
+        dict or None: JSON response from the API containing search results,
+                     or None if the request failed
+        
+    Note:
+        The function logs both the request and response for debugging purposes.
+        API authentication is handled using the credentials from environment variables.
+    """
     # API endpoint with query parameters
     url = f"{KAYAKO_API_URL}/helpcenter/search/articles.json"
 
@@ -20,22 +39,25 @@ def create_article_search_results_request(query):
         "query": query
     }
 
-    # Set up authentication
+    # Set up authentication using environment credentials
     auth = (KAYAKO_API_USERNAME, KAYAKO_API_PASSWORD)
 
-    # Make the API request
+    # Log the search query for debugging
     print(f"Searching for articles with query: '{query}'")
+    
     try:
+        # Make the API request with authentication
         response = requests.post(url, auth=auth, json=data)
 
-        # Check if the request was successful
+        # Check if the request was successful (raises an exception if not)
         response.raise_for_status()
 
-        # Return the JSON response
+        # Log and return the JSON response
         print(f"Response: {response.json()}")
         return response.json()
 
     except requests.exceptions.RequestException as e:
+        # Log detailed error information for debugging
         print(f"Error making request: {e}")
         if hasattr(e, 'response') and e.response is not None:
             print(f"Response status: {e.response.status_code}")
@@ -44,7 +66,26 @@ def create_article_search_results_request(query):
 
 
 def create_custom_support_ticket_request(name, email, subject, description, transcript=None):
-    """Create a ticket with call transcript and audio attachment."""
+    """
+    Create a new support ticket in the Kayako system via the API.
+    
+    This function handles formatting the ticket data, including conversation transcript
+    if provided, and submits it to the Kayako API to create a new ticket.
+    
+    Args:
+        name (str): Customer's name for identification
+        email (str): Customer's email for notifications and identification
+        subject (str): Brief description of the issue for the ticket title
+        description (str): Detailed explanation of the customer's problem
+        transcript (list, optional): List of conversation entries, each with 'role' and 'text' keys
+        
+    Returns:
+        bool: True if ticket creation was successful, False otherwise
+        
+    Note:
+        The ticket is styled with HTML formatting for better readability in the Kayako interface.
+        The function includes a [GAUNTLET AI TEST] prefix in the subject for identification.
+    """
     # Format transcript into a string with new line separation if provided
     formatted_transcript = ""
     if transcript:
@@ -54,18 +95,26 @@ def create_custom_support_ticket_request(name, email, subject, description, tran
             formatted_transcript += f"{entry['role']}: {entry['text']}\n"
         print("================================\n")
 
-    # API endpoint with query parameters
+    # API endpoint for case creation
     url = f"{KAYAKO_API_URL}/cases"
 
     # Create data payload according to API documentation
+    # HTML formatting is used to improve readability in the Kayako interface
     data = {
         "subject": f"[GAUNTLET AI TEST] Customer Support Ticket - {subject}",
         "contents": f"""<div style="font-family: Arial, sans-serif; line-height: 1.6;">
+
+            <div style="margin-bottom: 20px; background-color: #f6f8fa; padding: 15px; border-radius: 4px; border-left: 4px solid #0366d6;">
+                <strong>📋 USER DETAILS</strong><br>
+                <p style="margin-top: 10px; margin-bottom: 0; font-size: 16px;">Email: {email}</p>
+                <p style="margin-top: 10px; margin-bottom: 0; font-size: 16px;">Name: {name}</p>
+            </div>
+            
             <div style="margin-bottom: 20px; background-color: #f6f8fa; padding: 15px; border-radius: 4px; border-left: 4px solid #0366d6;">
                 <strong>📋 SUBJECT</strong><br>
-                <p style="margin-top: 10px; margin-bottom: 0; font-size: 16px;">{subject}</p>
+                <p style="margin-top: 10px; margin-bottom: 0; font-size: 16px;">Kayako Help Center Call</p>
             </div>
-
+            
             <div style="margin-bottom: 20px; background-color: #f6f8fa; padding: 15px; border-radius: 4px; border-left: 4px solid #0366d6;">
                 <strong>📝 SUMMARY</strong><br>
                 <p style="margin-top: 10px; margin-bottom: 0;">{description}</p>
@@ -74,7 +123,7 @@ def create_custom_support_ticket_request(name, email, subject, description, tran
             <div style="margin-bottom: 20px; background-color: #f6f8fa; padding: 15px; border-radius: 4px; border-left: 4px solid #0366d6;">
                 <strong>📞 CALL TRANSCRIPT</strong><br>
                 <pre style="background: #f5f5f5; padding: 15px; border-radius: 4px; margin: 10px 0; white-space: pre-wrap; font-family: monospace;">
-{formatted_transcript}
+                    {formatted_transcript}
                 </pre>
             </div>
         </div>""",
@@ -121,7 +170,24 @@ def create_custom_support_ticket_request(name, email, subject, description, tran
 
 # Create a call summary ticket
 async def create_call_summary_ticket(transcript, call_sid=None):
-    """Create a ticket with call transcript and audio attachment."""
+    """
+    Create a support ticket with call transcript and audio recording attachment.
+    
+    This asynchronous function creates a comprehensive ticket in Kayako that includes
+    the full conversation transcript and, if available, the audio recording of the call.
+    The audio file is converted from µ-law format to WAV for better compatibility.
+    
+    Args:
+        transcript (list): List of conversation entries, each with 'role' and 'text' keys
+        call_sid (str, optional): Twilio Call SID used to identify the call recording
+        
+    Returns:
+        dict or None: JSON response from the Kayako API if successful, None otherwise
+        
+    Note:
+        This function handles audio conversion using ffmpeg when available, with a Python
+        fallback implementation. Temporary files are cleaned up after ticket creation.
+    """
     # Format transcript into a string with new line separation
     print("\n=== Full Conversation Transcript ===")
     formatted_transcript = ""
@@ -130,104 +196,16 @@ async def create_call_summary_ticket(transcript, call_sid=None):
         formatted_transcript += f"{entry['role']}: {entry['text']}\n"
     print("================================\n")
 
-    # Prepare wav file path if we have a call_sid
-    wav_path = None
-    ulaw_path = None
-    if call_sid:
-        try:
-            # Check if the raw audio file exists
-            ulaw_path = f'call_{call_sid}.ulaw'
-            wav_path = f'call_{call_sid}.wav'
+    paths = convert_call_audio_to_wav(call_sid)
+    ulaw_path = paths[0]
+    wav_path = paths[1]
 
-            if os.path.exists(ulaw_path):
-                print(f"Converting audio for call {call_sid}...")
 
-                try:
-                    # Use ffmpeg for better audio conversion with enhancements
-                    import subprocess
-
-                    # Command to convert .ulaw to .wav with audio enhancements:
-                    # - Proper u-law to PCM conversion
-                    # - Bandpass filter for speech frequencies (300-3400 Hz)
-                    # - Equalization to enhance speech clarity
-                    # - Volume normalization
-                    ffmpeg_cmd = [
-                        'ffmpeg',
-                        '-y',  # Overwrite output file if it exists
-                        '-f', 'mulaw',  # Input format
-                        '-ar', '8000',  # Input sample rate
-                        '-ac', '1',  # Input channels (mono)
-                        '-i', ulaw_path,  # Input file
-                        '-af', 'highpass=f=200,lowpass=f=3500,equalizer=f=1000:width_type=h:width=200:g=4,loudnorm',
-                        # Audio filters
-                        '-ar', '16000',  # Increased output sample rate
-                        '-ac', '1',  # Output channels (mono)
-                        '-acodec', 'pcm_s16le',  # Output codec (16-bit PCM)
-                        wav_path  # Output file
-                    ]
-
-                    # Run ffmpeg command
-                    process = subprocess.run(
-                        ffmpeg_cmd,
-                        capture_output=True,
-                        text=True
-                    )
-
-                    # Check if conversion was successful
-                    if process.returncode == 0:
-                        print(f"Successfully converted audio to {wav_path} with enhanced quality")
-                    else:
-                        print(f"FFmpeg audio conversion failed: {process.stderr}")
-                        print("Falling back to Python-based conversion")
-
-                        # Fall back to Python-based conversion if ffmpeg fails
-                        import wave
-                        import numpy as np
-
-                        # Function to convert u-law to linear PCM
-                        def ulaw2linear(u_law_data):
-                            # u-law decoding table
-                            u = 255
-                            u_law_data = np.frombuffer(u_law_data, dtype=np.uint8)
-                            # Convert to signed integers
-                            sign = np.where(u_law_data < 128, 1, -1)
-                            # Remove sign bit
-                            u_law_data = np.where(u_law_data < 128, u_law_data, 255 - u_law_data)
-                            # Decode using u-law formula
-                            linear_data = sign * (((u_law_data / u) ** (1 / 1.5)) * (2 ** 15 - 1))
-                            return linear_data.astype(np.int16)
-
-                        # Read u-law data
-                        with open(ulaw_path, 'rb') as f:
-                            u_law_data = f.read()
-
-                        # Convert to linear PCM
-                        linear_data = ulaw2linear(u_law_data)
-
-                        # Create WAV file
-                        with wave.open(wav_path, 'wb') as wav_file:
-                            wav_file.setnchannels(1)  # Mono
-                            wav_file.setsampwidth(2)  # 2 bytes (16 bits) per sample
-                            wav_file.setframerate(8000)  # 8 kHz sampling rate for u-law
-                            wav_file.writeframes(linear_data.tobytes())
-
-                        print(f"Successfully converted audio to {wav_path} using fallback method")
-                except Exception as e:
-                    print(f"Audio conversion failed: {e}")
-                    # Fallback message
-                    print("Consider checking ffmpeg installation if this error persists")
-                    wav_path = None
-            else:
-                print(f"No audio file found at {ulaw_path}")
-                wav_path = None
-        except Exception as e:
-            print(f"Error processing audio: {e}")
-            wav_path = None
-
-    # API endpoint with query parameters
+    # Define the Kayako API endpoint for case creation
     url = f"{KAYAKO_API_URL}/cases"
 
-    # Create data payload according to API documentation
+    # Create formatted HTML payload for the ticket
+    # This uses styled HTML to improve readability in the Kayako interface
     data = {
         "subject": f"[GAUNTLET AI TEST] Call Summary - Call {call_sid}",
         "contents": f"""<div style="font-family: Arial, sans-serif; line-height: 1.6;">
@@ -262,18 +240,19 @@ async def create_call_summary_ticket(transcript, call_sid=None):
 
     result = None
     try:
-        # Prepare the multipart/form-data request
+        # Initialize empty files dictionary for multipart/form-data request
         files = {}
 
-        # Authenticate to Kayako
+        # Set up authentication credentials for Kayako API
         auth = (KAYAKO_API_USERNAME, KAYAKO_API_PASSWORD)
 
         # Add the audio file to the request if it exists
         if wav_path and os.path.exists(wav_path):
+            # Open the WAV file in binary mode and add it to the request
             with open(wav_path, 'rb') as f:
                 files['attachment'] = (os.path.basename(wav_path), f, 'audio/wav')
-                # Make the POST request
-
+                
+                # Make the POST request with the audio attachment
                 print(f"Creating case with Kayako API at {url}")
                 response = requests.post(
                     url,
@@ -282,7 +261,7 @@ async def create_call_summary_ticket(transcript, call_sid=None):
                     files=files
                 )
 
-                # Check if request was successful
+                # Check if request was successful and log the result
                 if response.status_code in [200, 201]:
                     result = response.json()
                     print(f"Successfully created ticket: {result.get('data', {}).get('id')}")
@@ -290,9 +269,8 @@ async def create_call_summary_ticket(transcript, call_sid=None):
                     print(f"Error creating ticket: {response.status_code} - {response.text}")
             print(f"Attaching audio file: {wav_path}")
         else:
+            # Make the POST request without audio attachment
             print("No audio file found")
-
-            # Make the POST request
             print(f"Creating case with Kayako API at {url}")
             response = requests.post(
                 url,
@@ -301,7 +279,7 @@ async def create_call_summary_ticket(transcript, call_sid=None):
                 files=files
             )
 
-            # Check if request was successful
+            # Check if request was successful and log the result
             if response.status_code in [200, 201]:
                 result = response.json()
                 print(f"Successfully created ticket: {result.get('data', {}).get('id')}")
@@ -309,10 +287,12 @@ async def create_call_summary_ticket(transcript, call_sid=None):
                 print(f"Error creating ticket: {response.status_code} - {response.text}")
 
     except Exception as e:
+        # Log any errors that occur during ticket creation
         print(f"Error creating ticket: {e}")
 
     finally:
-        # Clean up files after ticket creation attempt (regardless of success)
+        # Always clean up temporary files, regardless of success or failure
+        # This prevents accumulation of temporary files on the server
         cleanup_files(ulaw_path, wav_path)
 
     return result
