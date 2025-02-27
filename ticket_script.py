@@ -9,7 +9,7 @@ load_dotenv()
 
 # API endpoint
 KAYAKO_API_URL = os.getenv('KAYAKO_API_URL', 'https://doug-test.kayako.com/api/v1/cases')
-url = f"{KAYAKO_API_URL}?include=channel,last_public_channel,mailbox,facebook_page,facebook_account,twitter_account,user,organization,sla_metric,sla_version_target,sla_version,identity_email,identity_domain,identity_facebook,identity_twitter,identity_phone,case_field,read_marker"
+url = f"{KAYAKO_API_URL}/cases?include=channel,last_public_channel,mailbox,facebook_page,facebook_account,twitter_account,user,organization,sla_metric,sla_version_target,sla_version,identity_email,identity_domain,identity_facebook,identity_twitter,identity_phone,case_field,read_marker"
 
 # Credentials
 KAYAKO_API_USERNAME = os.getenv('KAYAKO_API_USERNAME')

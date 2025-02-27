@@ -4,14 +4,16 @@ import base64
 import asyncio
 import websockets
 import requests
-from fastapi import FastAPI, WebSocket, Request
+from fastapi import FastAPI, WebSocket, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.websockets import WebSocketDisconnect
 from openai import OpenAI
+from twilio import twiml
 from twilio.twiml.voice_response import VoiceResponse, Connect, Say, Stream
 from dotenv import load_dotenv
 from rag import RAGRetriever
 from twilio.rest import Client
+import random
 
 # Load environment variables from .env file
 load_dotenv()
@@ -38,18 +40,20 @@ KAYAKO_API_USERNAME = os.getenv('KAYAKO_API_USERNAME')
 KAYAKO_API_PASSWORD = os.getenv('KAYAKO_API_PASSWORD')
 KAYAKO_API_URL = os.getenv('KAYAKO_API_URL')
 
+# System message for the help bot
 SYSTEM_MESSAGE = f"""
 You are a helpful and bubbly customer support agent for Kayako who loves to chat to customers. 
-You specialize in providing clear, actionable answers based on Kayako's documentation.
+You specialize in providing actionable answers based on Kayako's documentation.
 
 When responding:
 1. Be concise and clear - suitable for phone conversation
 2. Use a natural, conversational tone
 3. Focus on providing specific, actionable steps
 4. If the documentation contains relevant information, even if partial, use it to help the user
-5. Never suggest connecting to a human agent - the system will handle that automatically
+6. Always use the get_article_search_results function on the user's problem or question, to search for articles in Kayako and see if any relevant information is available.
 
 Evaluate the provided documentation:
+- Always use the get_article_search_results function on the user's problem or question, to search for articles in Kayako and see if any relevant information is available.
 - If it contains ANY relevant information to answer the question, use it to provide specific guidance
 - If it's completely unrelated or doesn't help answer the question at all, respond with:
 "I'm sorry, but I'm not sure I can help you with that."
@@ -58,6 +62,9 @@ Evaluate the provided documentation:
 - If at any point the user indicates that they are done or want to end the call, say "Thank you for calling Kayako's help center. Have a great day!"
 - Only use this predefined termination message "Thank you for calling Kayako's help center. Have a great day!" at any point where you would want to end the call.
 - If the user's transcription is empty or incoherent, say "I'm sorry, I didn't catch that. Could you please repeat that again?"
+- If the user asks to speak to a agent or accepts the offer to speak to a agent, accept the request and use the connect_customer_to_agent function to connect the customer to an agent.
+- If the user's question is related to Kayako but you cannot answer it based on the documentation, offer to connect them to a human agent.
+- For any tool call, make sure to ask the user for parameters if needed. And if added clarity is needed, ask for more information.
 
 When providing instructions:
 - Convert any technical steps into natural spoken language
@@ -72,7 +79,7 @@ KNOWLEDGE BASE DOCUMENTATION:
 """
 
 # Voice configuration for text-to-speech
-VOICE = 'alloy'
+VOICE = 'sage'
 
 # Show interruption timing math
 SHOW_TIMING_MATH = False
@@ -211,7 +218,7 @@ async def handle_media_stream(websocket: WebSocket):
         # Send events to Twilio
         async def send_to_twilio():
             """Receive events from the OpenAI Realtime API, send audio back to Twilio."""
-            nonlocal stream_sid, last_assistant_item, response_start_timestamp_twilio, end_call_triggered, call_recording_file
+            nonlocal stream_sid, last_assistant_item, response_start_timestamp_twilio, end_call_triggered, call_recording_file, call_sid
             try:
                 async for openai_message in openai_ws:
                     response = json.loads(openai_message)
@@ -264,20 +271,28 @@ async def handle_media_stream(websocket: WebSocket):
                                 params = args_str
                             print(params)
                             
-                            # # DO NOT REMOVE THIS COMMENTED CODE
-                            # if response.get("type") == "conversation.item.created" and response["item"].get("type") == "function_call":
-                            #     func_name = response["item"].get("name")
-                            #     params = response["item"].get("parameters", {})
-                            #     call_id = response["item"].get("call_id")
-                            #     result = None
-                            #     print(f"Received function call: {func_name} with parameters: {params} and call_id: {call_id}")
-                            #     # print(f"Weather Conversation item created response: {response}")
+                            # DO NOT REMOVE THIS COMMENTED CODE
+                            if response.get("type") == "conversation.item.created" and response["item"].get("type") == "function_call":
+                                func_name = response["item"].get("name")
+                                params = response["item"].get("parameters", {})
+                                call_id = response["item"].get("call_id")
+                                result = None
+                                print(f"Received function call: {func_name} with parameters: {params} and call_id: {call_id}")
 
                             # Inspect the function name and call the corresponding function.
-                            if func_name == "get_weather":
-                                location = params.get("location", "")
-                                units = params.get("units", "metric")
-                                result = get_weather(location, units)
+                            if func_name == "connect_customer_to_agent":
+                                name = params.get("name", "")
+                                email = params.get("email", "")
+                                result = connect_customer_to_agent(name, email, call_sid)
+                            elif func_name == "create_custom_support_ticket":
+                                name = params.get("name", "")
+                                email = params.get("email", "")
+                                subject = params.get("subject", "")
+                                description = params.get("description", "")
+                                result = create_custom_support_ticket(name, email, subject, description, conversation_transcript)
+                            elif func_name == "get_article_search_results":
+                                query = params.get("query", "")
+                                result = get_article_search_results(query)
                             else:
                                 result = {"error": "Unknown function"}
                         except json.JSONDecodeError as e:
@@ -419,6 +434,7 @@ async def initialize_session(openai_ws):
             "turn_detection": {
                 "type": "server_vad",
                 "threshold": 0.8,   # Higher threshold means less sensitive to background noise (default is 0.8)
+                "silence_duration_ms": 1000,
             },
             "input_audio_format": "g711_ulaw",
             "output_audio_format": "g711_ulaw",
@@ -432,24 +448,68 @@ async def initialize_session(openai_ws):
             "tools": [
                 {
                     "type": "function",
-                    "name": "get_weather",
-                    "description": "Fetches the current weather for a given location. Use this function when the user asks for weather updates.",
+                    "name": "connect_customer_to_agent",
+                    "description": """Queries the customer for the necessary details to connect them to an agent. 
+                                      Determines whether an agent is available to take the call. 
+                                      If no agent is available, offer to create a support ticket. 
+                                      If the user accepts, use the create_custom_support_ticket function.""",
                     "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "location": {
-                        "type": "string",
-                        "description": "The city or region to retrieve the weather for."
+                        "type": "object",
+                        "properties": {
+                            "name": {
+                                "type": "string",
+                                "description": "The name of the customer."
+                            },
+                            "email": {
+                                "type": "string",
+                                "description": "The email of the customer."
+                            }
                         },
-                        "units": {
-                        "type": "string",
-                        "enum": ["metric", "imperial"],
-                        "description": "Unit system for temperature (metric for Celsius, imperial for Fahrenheit)."
-                        }
-                    },
-                    "required": ["location", "units"]
+                        "required": ["name", "email"]
                     }
-                }
+                },
+                {
+                    "type": "function",
+                    "name": "create_custom_support_ticket",
+                    "description": "Creates a custom support ticket for the customer.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "name": {
+                                "type": "string",
+                                "description": "The name of the customer."
+                            },
+                            "email": {
+                                "type": "string",
+                                "description": "The email of the customer."
+                            },
+                            "subject": {
+                                "type": "string",
+                                "description": "The subject of the support ticket."
+                            },
+                            "description": {
+                                "type": "string",
+                                "description": "Summary of the user's request."
+                            }
+                        },
+                        "required": ["name", "email", "subject", "description"]
+                    }
+                },
+                {
+                    "type": "function",
+                    "name": "get_article_search_results",
+                    "description": "Searches for articles in Kayako and returns the results.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "query": {
+                                "type": "string",
+                                "description": "The user's problem or question to search for."
+                            }
+                        },
+                        "required": ["query"]
+                    }
+                },
             ]
         }
     }
@@ -460,17 +520,6 @@ async def initialize_session(openai_ws):
     # Initialize the conversation with a greeting
     await send_initial_conversation_item(openai_ws)
 
-# Get weather information for a given location
-def get_weather(location, units):
-    # Your custom logic to fetch weather information for the given location.
-    # For demonstration, we'll return a dummy result.
-    print(f"Fetching weather for {location} in {units} units")
-    return {
-        "temperature": 22,
-        "description": "Partly cloudy",
-        "units": units,
-        "location": location
-    }
 
 # End a Twilio call using the REST API
 async def end_call(call_sid):
@@ -586,7 +635,7 @@ async def create_call_summary_ticket(transcript, call_sid=None):
             wav_path = None
 
     # API endpoint with query parameters
-    url = f"{KAYAKO_API_URL}"
+    url = f"{KAYAKO_API_URL}/cases"
 
     # Create data payload according to API documentation
     data = {
@@ -678,6 +727,61 @@ async def create_call_summary_ticket(transcript, call_sid=None):
         
     return result
 
+
+
+# ====================================
+# OpenAI Tool Functions
+# ====================================
+
+def get_article_search_results(query):
+    """Search for articles in Kayako and return the results."""
+    return create_article_search_results_request(query)
+
+def connect_customer_to_agent(name, email, call_sid):
+    """Connect a customer to an agent."""
+    import random
+    
+    # 50/50 dice roll to determine if an agent is available
+    is_agent_available = True #random.choice([True, False])
+    
+    print(f"Agent availability check for {name} ({email}): {'Available' if is_agent_available else 'Unavailable'}")
+    
+    if is_agent_available:
+        # Get the current call SID from your global/nonlocal variable
+        # You'll need to make call_sid available here
+        if call_sid:  
+            # Schedule the redirect (use asyncio.create_task since we can't await directly in this sync function)
+            import asyncio
+            asyncio.create_task(redirect_call(call_sid))
+            
+        return {
+            "status": "success",
+            "message": "Agent is available. Connecting customer to agent..."
+        }
+    else:
+        return {
+            "status": "error",
+            "message": "No agent is available. Offering to create a support ticket."
+        }
+
+def create_custom_support_ticket(name, email, subject, description):
+    """Create a custom support ticket."""
+    is_ticket_created = create_custom_support_ticket_request(name, email, subject, description)
+    if is_ticket_created:
+        return {
+            "status": "success",
+            "message": "Ticket created successfully."
+        }
+    else:
+        return {
+            "status": "error",
+            "message": "Failed to create ticket."
+        }
+
+# ====================================
+# Synchronous Utility Functions
+# ====================================
+
 # Helper function to clean up temporary files
 def cleanup_files(ulaw_path, wav_path):
     """Clean up temporary audio files."""
@@ -693,6 +797,154 @@ def cleanup_files(ulaw_path, wav_path):
             print(f"Deleted wav file: {wav_path}")
     except Exception as e:
         print(f"Error cleaning up files: {e}")
+
+
+# Create a call summary ticket
+def create_custom_support_ticket_request(name, email, subject, description, transcript):
+    """Create a ticket with call transcript and audio attachment."""
+    # Format transcript into a string with new line separation
+    print("\n=== Full Conversation Transcript ===")
+    formatted_transcript = ""
+    for entry in transcript:
+        print(f"{entry['role']}: {entry['text']}")
+        formatted_transcript += f"{entry['role']}: {entry['text']}\n"
+    print("================================\n")
+
+
+    # API endpoint with query parameters
+    url = f"{KAYAKO_API_URL}/cases"
+
+    # Create data payload according to API documentation
+    data = {
+        "subject": f"[GAUNTLET AI TEST] Customer Support Ticket - {subject}",
+        "contents": f"""<div style="font-family: Arial, sans-serif; line-height: 1.6;">
+            <div style="margin-bottom: 20px; background-color: #f6f8fa; padding: 15px; border-radius: 4px; border-left: 4px solid #0366d6;">
+                <strong>📋 SUBJECT</strong><br>
+                <p style="margin-top: 10px; margin-bottom: 0; font-size: 16px;">{subject}</p>
+            </div>
+
+            <div style="margin-bottom: 20px; background-color: #f6f8fa; padding: 15px; border-radius: 4px; border-left: 4px solid #0366d6;">
+                <strong>📝 SUMMARY</strong><br>
+                <p style="margin-top: 10px; margin-bottom: 0;">{description}</p>
+            </div>
+
+            <div style="margin-bottom: 20px; background-color: #f6f8fa; padding: 15px; border-radius: 4px; border-left: 4px solid #0366d6;">
+                <strong>📞 CALL TRANSCRIPT</strong><br>
+                <pre style="background: #f5f5f5; padding: 15px; border-radius: 4px; margin: 10px 0; white-space: pre-wrap; font-family: monospace;">
+{formatted_transcript}
+                </pre>
+            </div>
+        </div>""",
+        "channel": "MAIL",
+        "channel_id": "1",
+        "tags": "gauntlet-ai",
+        "type_id": "7",
+        "status_id": "1",
+        "priority_id": "4",
+        "assigned_agent_id": "309",
+        "assigned_team_id": "1",
+        "requester_id": "309",
+        "form_id": "1",
+    }
+
+    result = None
+    try:
+        # Prepare the multipart/form-data request
+        files = {}
+        
+        # Authenticate to Kayako
+        auth = (KAYAKO_API_USERNAME, KAYAKO_API_PASSWORD)
+
+        # Make the POST request
+        print(f"Creating case with Kayako API at {url}")
+        response = requests.post(
+            url,
+            auth=auth,
+            data=data,
+            files=files
+        )
+        
+        # Check if request was successful
+        if response.status_code in [200, 201]:
+            result = response.json()
+            print(f"Successfully created ticket: {result.get('data', {}).get('id')}")
+            return True
+        else:
+            print(f"Error creating ticket: {response.status_code} - {response.text}")
+            return False
+    except Exception as e:
+        print(f"Error creating ticket: {e}")
+        return False
+
+def create_article_search_results_request(query):
+    # API endpoint with query parameters
+    url = f"{KAYAKO_API_URL}/helpcenter/search/articles.json"
+
+    # Prepare the request data
+    data = {
+        "query": query
+    }
+
+    # Set up authentication
+    auth = (KAYAKO_API_USERNAME, KAYAKO_API_PASSWORD)
+    
+    # Make the API request
+    print(f"Searching for articles with query: '{query}'")
+    try:
+        response = requests.post(url, auth=auth, json=data)
+        
+        # Check if the request was successful
+        response.raise_for_status()
+        
+        # Return the JSON response
+        print(f"Response: {response.json()}")
+        return response.json()
+    
+    except requests.exceptions.RequestException as e:
+        print(f"Error making request: {e}")
+        if hasattr(e, 'response') and e.response is not None:
+            print(f"Response status: {e.response.status_code}")
+            print(f"Response text: {e.response.text}")
+        return None
+
+    
+# Redirect a Twilio call
+async def redirect_call(call_sid):
+    """Redirect an active Twilio call to a new URL or phone number."""
+    try:
+        # Create an instance of the Twilio client
+        # Make sure you have the twilio client initialized with your credentials
+        
+        # Update the call with a new URL
+        # The URL should return TwiML that Twilio will use for the redirect
+        SERVER_URL = os.getenv("SERVER_URL")
+        redirect_url = f"${SERVER_URL}/redirect-to-agent"
+        updated_call = twilio_client.calls(call_sid).update(
+            url=redirect_url,
+            method='POST'
+        )
+        
+        print(f"Successfully redirected call {call_sid} to {redirect_url}")
+        return True
+    except Exception as e:
+        print(f"Error redirecting call: {e}")
+        return False
+
+@app.api_route("/redirect-to-agent", methods=["POST"])
+async def redirect_to_agent(request: Request):
+    """Return TwiML to connect the call to a human agent."""
+    # Create TwiML response
+    response = VoiceResponse()
+    
+    # You could add a message before transferring
+    response.say("Transferring you to an available agent. Please hold.")
+    
+    # Dial the agent's number or SIP address
+    REDIRECT_PHONE_NUMBER = os.getenv('REDIRECT_PHONE_NUMBER')
+    response.dial(REDIRECT_PHONE_NUMBER)
+    
+    # Return the TwiML as a string with proper FastAPI Response
+    return Response(content=str(response), media_type="text/xml")
 
 # Start the server if running as main script
 if __name__ == "__main__":
