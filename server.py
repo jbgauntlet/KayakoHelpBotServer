@@ -440,7 +440,7 @@ async def initialize_session(openai_ws):
             "turn_detection": {
                 "type": "server_vad",
                 "threshold": 0.8,   # Higher threshold means less sensitive to background noise (default is 0.8)
-                "silence_duration_ms": 1000,
+                "silence_duration_ms": 600,
             },
             "input_audio_format": "g711_ulaw",
             "output_audio_format": "g711_ulaw",
